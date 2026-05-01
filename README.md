@@ -1,8 +1,6 @@
 # mobile-app
 アプリ
 
-# 4月月例報告書
-
 ## 作品名
 
 ## 対象者
@@ -39,26 +37,28 @@ Yolo
 
 検索UI
 
-### ローカルDB(relativeTime)
-- id
-- movieAdress
-- relativeTimeBase
+~~### ローカルDB(relativeTime)~~
+~~- id~~
+~~- movieAdress~~
+~~- relativeTimeBase~~
 
 ### ローカルDB(keyFrame) sdCard > local
 - id
 - keyFrame
-- id-relativeTime
-- timeStamp(relativeTime)
+- movieAdress
+- timeStamp(realTime)
+- timeStamp(fileTime)
 
-### ローカルDB(cropPhoto)
+### ローカルDB(cropImage)
 - id : uuid
 - crop_image : バウンティボックス内の画像。
 - class_name : 物体名
 - score : 信頼値
 - color : 物体の色
-- time_stamp : 時系列が認識できる(処理順)
-- id-keyFrame : どのキーフレームから切り取ったCropPhotoか
-
+- timeStamp(realTime)
+- timeStamp(fileTime)
+- keyFrame
+- movieAdress
 
 ### データの流れ
 1. SDカードの認識がされているか  | 外部ストレージの接続状態が取得可能
