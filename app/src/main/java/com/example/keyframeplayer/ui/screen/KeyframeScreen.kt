@@ -22,6 +22,7 @@ import com.example.keyframeplayer.util.getKeyframeTimes
 import com.example.keyframeplayer.ui.viewmodel.SharedViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.clickable
 
 @Composable
 fun KeyframeScreen(
@@ -75,7 +76,11 @@ fun KeyframeScreen(
                     Image(
                         bitmap = item.bitmap.asImageBitmap(),
                         contentDescription = null,
-                        modifier = Modifier.size(120.dp)
+                        modifier = Modifier
+                            .size(120.dp)
+                            .clickable {
+                                navController.navigate("player/${item.timeUs}")
+                            }
                     )
                 }
             }
