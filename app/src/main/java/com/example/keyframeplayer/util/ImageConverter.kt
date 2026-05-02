@@ -1,18 +1,27 @@
 package com.example.keyframeplayer.util
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import java.io.ByteArrayOutputStream
+
+
+import android.content.Context
+import java.io.File
+import java.io.FileOutputStream
+
+
 
 object ImageConverter {
 
-    fun bitmapToByteArray(bitmap: Bitmap): ByteArray {
-        val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
-        return stream.toByteArray()
-    }
+    fun saveBitmapToInternalStorage(
+        context: Context,
+        bitmap: Bitmap,
+        fileName: String
+    ): String {
+        val file = File(context.filesDir, fileName)
 
-    fun byteArrayToBitmap(bytes: ByteArray): Bitmap {
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        FileOutputStream(file).use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        }
+
+        return file.absolutePath
     }
 }

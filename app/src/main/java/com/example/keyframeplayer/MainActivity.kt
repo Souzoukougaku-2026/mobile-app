@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.room.Room
 import com.example.keyframeplayer.ui.screen.KeyframeScreen
 import com.example.keyframeplayer.data.local.AppDatabase
+import com.example.keyframeplayer.ui.screen.DebugInsertScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,6 +60,10 @@ class MainActivity : ComponentActivity() {
 
                     composable("db") {
                         DebugScreen(dao = db.cropImageDao())
+                    }
+
+                    composable("insert") {
+                        DebugInsertScreen(db.cropImageDao())
                     }
                 }
             }

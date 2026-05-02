@@ -7,12 +7,15 @@ import androidx.room.PrimaryKey
 data class CropImageEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
-    val cropImage: ByteArray,
+    val cropImagePath: String,
     val className: String,
     val score: Float,
     val color: String,
     val timeStampReal: Long,
     val timeStampFile: Long,
-    val keyFrame: Boolean,
-    val movieAddress: String
+//    val keyFramePath: string,
+//    val moviePath: String
+    // debug vvv
+    val keyFramePath: String?,        // null OK
+    val moviePath: String?   // null OK
 )

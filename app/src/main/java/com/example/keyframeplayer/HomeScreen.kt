@@ -29,5 +29,11 @@ fun HomeScreen(navController: NavController) {
         }) {
             Text("DBデバッグ")
         }
+
+        Button(onClick = {
+            navController.navigate("insert")
+        }) {
+            Text("入力フォームへ")
+        }
     }
 }

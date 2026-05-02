@@ -51,14 +51,14 @@ Yolo
 
 ### ローカルDB(cropImage)
 - id : uuid
-- crop_image : バウンティボックス内の画像。
+- crop_imagePath : バウンティボックス内の画像。
 - class_name : 物体名
 - score : 信頼値
 - color : 物体の色
 - timeStamp(realTime)
 - timeStamp(fileTime)
-- keyFrame
-- movieAdress
+- keyFramePath
+- moviePath
 
 ### データの流れ
 1. SDカードの認識がされているか  | 外部ストレージの接続状態が取得可能

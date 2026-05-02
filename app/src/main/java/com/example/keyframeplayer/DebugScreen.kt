@@ -25,14 +25,14 @@ fun DebugScreen(
             scope.launch {
                 dao.insert(
                     CropImageEntity(
-                        cropImage = ByteArray(0),
+                        cropImagePath = "debug://dummy",
                         className = "dummy",
                         score = 1.0f,
                         color = "red",
                         timeStampReal = System.currentTimeMillis(),
                         timeStampFile = System.currentTimeMillis(),
-                        keyFrame = false,
-                        movieAddress = "none"
+                        keyFramePath = null,
+                        moviePath = null
                     )
                 )
                 list = dao.getAll()

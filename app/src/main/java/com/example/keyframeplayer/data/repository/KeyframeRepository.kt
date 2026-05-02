@@ -22,19 +22,29 @@ class KeyframeRepository(
         val items = extractor.getKeyframeItems(context, uri, times)
 
         items.forEach { item ->
+
+            // 🔥 フレーム画像をファイル保存
+            val keyframePath = ImageConverter.saveBitmapToInternalStorage(
+                context,
+                item.bitmap,
+                "keyframe_${item.timeUs}.png"
+            )
+
             val entity = CropImageEntity(
-                cropImage = ImageConverter.bitmapToByteArray(item.bitmap),
+                cropImagePath = keyframePath,   // 今回は同じでもOK
                 className = "unknown",
                 score = 0f,
                 color = "unknown",
                 timeStampReal = System.currentTimeMillis(),
                 timeStampFile = item.timeUs,
-                keyFrame = true,
-                movieAddress = uri.toString()
+                keyFramePath = keyframePath,    // ← 修正
+                moviePath = uri.toString()
             )
+
             dao.insert(entity)
         }
 
         return items
     }
+
 }
