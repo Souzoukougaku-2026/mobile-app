@@ -1,6 +1,5 @@
-package com.example.keyframeplayer
+package com.example.keyframeplayer.ui.screen
 
-import android.net.Uri
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -9,6 +8,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.example.keyframeplayer.ui.viewmodel.SharedViewModel
 
 @Composable
 fun PlayerScreen(

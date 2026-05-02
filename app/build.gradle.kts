@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    id("kotlin-kapt")
 }
 
 android {
@@ -45,6 +46,8 @@ android {
         kotlinCompilerExtensionVersion =
             "1.5.1"
     }
+
+
 }
 
 dependencies {
@@ -110,4 +113,9 @@ dependencies {
     debugImplementation(
         libs.androidx.ui.tooling
     )
+
+    // Room
+    implementation("androidx.room:room-runtime:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
 }
