@@ -27,16 +27,15 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -44,8 +43,6 @@ import androidx.navigation.compose.rememberNavController
 import com.example.keyframeplayer.ui.theme.KeyframePlayerTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.lifecycle.viewmodel.compose.viewModel
-
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,7 +54,6 @@ class MainActivity : ComponentActivity() {
                 val sharedViewModel: SharedViewModel = viewModel()
 
                 NavHost(navController = navController, startDestination = "main") {
-
                     composable("main") {
                         MainScreen(navController, sharedViewModel)
                     }
@@ -77,7 +73,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ── ユーティリティ（IOスレッドで呼ぶこと） ──────────────────
 fun getKeyframeTimes(context: Context, uri: Uri): List<Long> {
     val extractor = MediaExtractor()
     extractor.setDataSource(context, uri, null)
@@ -85,16 +80,21 @@ fun getKeyframeTimes(context: Context, uri: Uri): List<Long> {
     var videoTrackIndex = -1
     for (i in 0 until extractor.trackCount) {
         val mime = extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)
-        if (mime?.startsWith("video/") == true) { videoTrackIndex = i; break }
+        if (mime?.startsWith("video/") == true) {
+            videoTrackIndex = i
+            break
+        }
     }
     if (videoTrackIndex == -1) return emptyList()
 
     extractor.selectTrack(videoTrackIndex)
     val times = mutableListOf<Long>()
     while (true) {
-        val t = extractor.sampleTime
-        if (t < 0) break
-        if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) times.add(t)
+        val timeUs = extractor.sampleTime
+        if (timeUs < 0) break
+        if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+            times.add(timeUs)
+        }
         extractor.advance()
     }
     extractor.release()
@@ -120,29 +120,29 @@ fun getKeyframeItems(
     return items
 }
 
-
-// ── メイン画面 ────────────────────────────────────────────────
 @Composable
 fun MainScreen(
     navController: NavController,
-    sharedViewModel: SharedViewModel,  // ← 追加
+    sharedViewModel: SharedViewModel,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
 
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
-    var keyframeItems by remember { mutableStateOf<List<KeyframeItem>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
+    val selectedUri by sharedViewModel.selectedUri.collectAsState()
+    val keyframeItems by sharedViewModel.keyframeItems.collectAsState()
+    val isLoading by sharedViewModel.isLoading.collectAsState()
 
-    // URIが変わったらバックグラウンドで取得
     LaunchedEffect(selectedUri) {
         val uri = selectedUri ?: return@LaunchedEffect
-        isLoading = true
-        keyframeItems = withContext(Dispatchers.IO) {
+        if (keyframeItems.isNotEmpty()) return@LaunchedEffect
+
+        sharedViewModel.setLoading(true)
+        val items = withContext(Dispatchers.IO) {
             val times = getKeyframeTimes(context, uri)
             getKeyframeItems(context, uri, times)
         }
-        isLoading = false
+        sharedViewModel.setKeyframeItems(items)
+        sharedViewModel.setLoading(false)
     }
 
     val launcher = rememberLauncherForActivityResult(
@@ -152,15 +152,16 @@ fun MainScreen(
             context.contentResolver.takePersistableUriPermission(
                 it,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
-            sharedViewModel.setUri(it)  // ← ViewModelに保存
-            selectedUri = it
+            sharedViewModel.selectVideo(it)
         }
     }
 
     Column(
-        modifier = modifier.fillMaxSize().padding(16.dp)
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
     ) {
         Button(onClick = { launcher.launch(arrayOf("video/*")) }) {
             Text("動画を選択")
@@ -193,7 +194,6 @@ fun MainScreen(
         }
     }
 }
-
 
 @Preview(showBackground = true)
 @Composable
