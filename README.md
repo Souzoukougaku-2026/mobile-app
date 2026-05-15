@@ -43,22 +43,23 @@ Yolo
 ~~- relativeTimeBase~~
 
 ### ローカルDB(keyFrame) sdCard > local
-- id
-- keyFrame
-- movieAdress
-- timeStamp(realTime)
-- timeStamp(fileTime)
+- id : uuid
+- keyFramePath : Path
+- movieParh : Path
+
 
 ### ローカルDB(cropImage)
 - id : uuid
-- crop_image : バウンティボックス内の画像。
-- class_name : 物体名
-- score : 信頼値
-- color : 物体の色
-- timeStamp(realTime)
-- timeStamp(fileTime)
-- keyFrame
-- movieAdress
+- crop_imagePath : バウンティボックス内の画像。(Path)
+- class_name : 物体名 (string)
+- score : 信頼値(浮動小数点)
+- color : 物体の色(列挙子 : imageColor)
+- realTime : timeStamp
+- fileTime : timeStamp
+- keyFramePath : Path
+- movieParh : Path
+
+※ Path = Text
 
 ### データの流れ
 1. SDカードの認識がされているか  | 外部ストレージの接続状態が取得可能
