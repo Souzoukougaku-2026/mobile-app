@@ -46,14 +46,18 @@ Yolo
 - id : uuid
 - keyFramePath : Path
 - movieParh : Path
-
+- realTime : timestamp
+- fileTime : timestamp
 
 ### ローカルDB(cropImage)
 - id : uuid
-- crop_imagePath : バウンティボックス内の画像。(Path)
+~~- crop_imagePath : バウンティボックス内の画像。(Path)~~
 - class_name : 物体名 (string)
 - score : 信頼値(浮動小数点)
 - color : 物体の色(列挙子 : imageColor)
+- bboxPoint : {(upper left),(lower right)}={{横,縦},{横,縦}}
+- id_keyFrame : keyFrame dbの識別子
+- （以下keyFrame db）
 - realTime : timeStamp
 - fileTime : timeStamp
 - keyFramePath : Path
