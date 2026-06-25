@@ -92,6 +92,8 @@ dependencies {
         "androidx.media3:media3-ui:1.3.1"
     )
 
+    implementation("androidx.compose.material:material-icons-extended")
+
     // ViewModel
     implementation(
         "androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7"
