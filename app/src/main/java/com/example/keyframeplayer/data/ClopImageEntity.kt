@@ -41,5 +41,5 @@ data class ClopImageEntity(
     val bboxPoint: BPoint,
 
     @ColumnInfo(index = true)
-    val idKeyFrame: UUID,
+    val idKeyFrame: UUID
 )

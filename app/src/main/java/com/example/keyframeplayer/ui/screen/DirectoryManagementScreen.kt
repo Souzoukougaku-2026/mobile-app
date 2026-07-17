@@ -19,7 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.keyframeplayer.ui.viewmodel.SaveKeyFrameViewModel
+import com.example.keyframeplayer.ui.viewmodel.ImageRecognitionViewModel
 import com.example.keyframeplayer.util.VideoInfo
 import kotlinx.coroutines.launch
 
@@ -39,7 +39,7 @@ fun DirectoryManagementScreen(
     onChooseClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val keyFrameViewModel: SaveKeyFrameViewModel = viewModel()
+    val keyFrameViewModel: ImageRecognitionViewModel = viewModel()
 
     // --- 追加: 現在の画面状態を管理するState ---
     var currentScreenState by remember { mutableStateOf(ManagementScreenState.SELECT_DIRECTORY) }
