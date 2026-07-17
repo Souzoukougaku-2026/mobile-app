@@ -13,22 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
+package com.example.keyframeplayer.model
+
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
+
+class timeStamp(
+    val realtime: Long = System.currentTimeMillis()
+)
+data class Topic(
+    val class_name: String,
+    val fileTime: Int,
+    @DrawableRes val imageRes: Int,
+    @DrawableRes val imageColor: Int
+) {
+
+    companion object {
+        fun sortedBy(function: () -> Int) {}
     }
 }
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-rootProject.name = "Courses"
-include(":app")
