@@ -1,30 +1,23 @@
 package com.example.keyframeplayer.data
 
-class CropImageDao {
-    private val items = mutableListOf<CropImage>()
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
-    suspend fun getAll(): List<CropImage> {
-        return items.toList()
-    }
+@Dao
+interface CropImageDao {
+    @Query("SELECT * FROM crop_images ORDER BY timestampFileTime ASC")
+    fun getAllFlow(): Flow<List<CropImage>>
 
-    suspend fun getById(id: String): CropImage? {
-        return items.firstOrNull { it.id == id }
-    }
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<CropImage>)
 
-    suspend fun getTimestampById(id: String): CropImageTimestamp? {
-        val item = getById(id) ?: return null
+    @Query("DELETE FROM crop_images")
+    suspend fun deleteAll()
 
-        return CropImageTimestamp(
-            id = item.id,
-            className = item.className,
-            timestampRealTime = item.timestampRealTime,
-            timestampFileTime = item.timestampFileTime,
-            movieAddress = item.movieAddress
-        )
-    }
-
-    suspend fun replaceAll(newItems: List<CropImage>) {
-        items.clear()
-        items.addAll(newItems)
-    }
+    // 既存のメソッドの代替
+    @Query("SELECT * FROM crop_images WHERE id = :id")
+    suspend fun getById(id: String): CropImage?
 }

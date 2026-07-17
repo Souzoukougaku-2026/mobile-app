@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -36,15 +37,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.keyframeplayer.data.CropImage
 import com.example.keyframeplayer.ui.theme.KeyframePlayerTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 class MainActivity : ComponentActivity() {
+    @OptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -57,14 +62,13 @@ class MainActivity : ComponentActivity() {
                     composable("main") {
                         MainScreen(navController, sharedViewModel)
                     }
-
                     composable("player/{timeUs}") { backStackEntry ->
                         val timeUs = backStackEntry.arguments
                             ?.getString("timeUs")?.toLong() ?: 0L
 
                         PlayerScreen(
                             viewModel = sharedViewModel,
-                            timeUs = timeUs
+                            timeUs = timeUs,
                         )
                     }
                 }
@@ -74,50 +78,64 @@ class MainActivity : ComponentActivity() {
 }
 
 fun getKeyframeTimes(context: Context, uri: Uri): List<Long> {
-    val extractor = MediaExtractor()
-    extractor.setDataSource(context, uri, null)
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, uri)
+        val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+        val intervalUs = 60 * 1000_000L // 1分
 
-    var videoTrackIndex = -1
-    for (i in 0 until extractor.trackCount) {
-        val mime = extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)
-        if (mime?.startsWith("video/") == true) {
-            videoTrackIndex = i
-            break
+        val times = mutableListOf<Long>()
+        var currentUs = 0L
+        while (currentUs < durationMs * 1000) {
+            times.add(currentUs)
+            currentUs += intervalUs
         }
+        times
+    } finally {
+        retriever.release()
     }
-    if (videoTrackIndex == -1) return emptyList()
-
-    extractor.selectTrack(videoTrackIndex)
-    val times = mutableListOf<Long>()
-    while (true) {
-        val timeUs = extractor.sampleTime
-        if (timeUs < 0) break
-        if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
-            times.add(timeUs)
-        }
-        extractor.advance()
-    }
-    extractor.release()
-    return times
 }
 
 fun getKeyframeItems(
     context: Context,
     uri: Uri,
     timesUs: List<Long>,
-    limit: Int = 10
+    limit: Int = 100
 ): List<KeyframeItem> {
     val retriever = MediaMetadataRetriever()
     retriever.setDataSource(context, uri)
     val items = mutableListOf<KeyframeItem>()
     for (timeUs in timesUs.take(limit)) {
-        retriever.getFrameAtTime(
-            timeUs,
-            MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-        )?.let { items.add(KeyframeItem(timeUs, it)) }
+        val bitmap = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            retriever.getScaledFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 512, 512)
+        } else {
+            retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        }
+
+        bitmap?.let { items.add(KeyframeItem(timeUs, it)) }
     }
     retriever.release()
     return items
+}
+
+private fun saveBitmapAndCreateEntity(context: Context, bitmap: android.graphics.Bitmap, timeUs: Long, videoUri: Uri): CropImage {
+    val filename = "frame_${timeUs}.jpg"
+    context.openFileOutput(filename, Context.MODE_PRIVATE).use {
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it)
+    }
+    val path = context.getFileStreamPath(filename).absolutePath
+
+    return CropImage(
+        id = UUID.randomUUID().toString(),
+        cropImagePath = path,
+        className = "Keyframe",
+        score = 1.0f,
+        color = "#FFFFFF",
+        timestampRealTime = System.currentTimeMillis(),
+        timestampFileTime = timeUs / 1000, // ms単位
+        keyFrame = (timeUs / 1000000).toInt(),
+        movieAddress = videoUri.toString()
+    )
 }
 
 @Composable
@@ -139,7 +157,12 @@ fun MainScreen(
         sharedViewModel.setLoading(true)
         val items = withContext(Dispatchers.IO) {
             val times = getKeyframeTimes(context, uri)
-            getKeyframeItems(context, uri, times)
+            val kfItems = getKeyframeItems(context, uri, times)
+            val cropImages = kfItems.map { item ->
+                saveBitmapAndCreateEntity(context, item.bitmap, item.timeUs, uri)
+            }
+            sharedViewModel.saveToRoom(context, cropImages)
+            kfItems
         }
         sharedViewModel.setKeyframeItems(items)
         sharedViewModel.setLoading(false)

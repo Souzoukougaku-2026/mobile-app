@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.*
@@ -20,9 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.Text
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.media3.common.MediaItem
@@ -33,6 +29,9 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.R
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import com.example.keyframeplayer.data.CropImage
 
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -42,9 +41,11 @@ fun PlayerScreen(
     viewModel: SharedViewModel,
     timeUs: Long
 ) {
-    //val context = LocalContext.current
+    val context = LocalContext.current
     val uri by viewModel.selectedUri.collectAsState()
-    val keyframes by viewModel.keyframeItems.collectAsState()
+    //val keyframes by viewModel.keyframeItems.collectAsState()
+
+    val keyframes by viewModel.getCropImages(context).collectAsState(initial = emptyList())
 
     var  isFullScreen by remember {mutableStateOf(false)}
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -57,7 +58,7 @@ fun PlayerScreen(
 
     val pagerState = rememberPagerState(
         initialPage = remember(keyframes, timeUs) {
-            val index = keyframes.indexOfFirst { it.timeUs == timeUs }
+            val index = keyframes.indexOfFirst { it.timestampFileTime * 1000L == timeUs }
             if (index != -1) index else 0
         },
         pageCount = { keyframes.size }
@@ -87,7 +88,7 @@ fun PlayerScreen(
                     currentUri?.let {
                         VideoPlayerItem(
                             uri = it,
-                            timeUs = keyframes[page].timeUs,
+                            timeUs = keyframes[page].timestampFileTime * 1000L,
                             isActive = (pagerState.currentPage == page),
                             isFullScreen = isFullScreen,
                             onToggleFullScreen = { isFullScreen = !isFullScreen },
@@ -121,7 +122,7 @@ fun VideoPlayerItem(
     isActive: Boolean,
     isFullScreen: Boolean,
     onToggleFullScreen: () -> Unit,
-    keyframes: List<KeyframeItem>,
+    keyframes: List<CropImage>,
 ) {
     val context = LocalContext.current
 
@@ -164,7 +165,7 @@ fun VideoPlayerItem(
                         if (visibility == android.view.View.VISIBLE) {
                             val timeBar = findViewById<DefaultTimeBar>(R.id.exo_progress)
                             if (timeBar != null) {
-                                val markerTimes = keyframes.map { it.timeUs / 1000 }.toLongArray()
+                                val markerTimes = keyframes.map { it.timestampFileTime }.toLongArray()
                                 timeBar.setAdGroupTimesMs(
                                     markerTimes,
                                     BooleanArray(markerTimes.size),
@@ -183,7 +184,7 @@ fun VideoPlayerItem(
                 }
                 val timeBar = view.findViewById<DefaultTimeBar>(R.id.exo_progress)
                 if (timeBar != null) {
-                    val markerTimes = keyframes.map { it.timeUs / 1000 }.toLongArray()
+                    val markerTimes = keyframes.map { it.timestampFileTime }.toLongArray()
                     timeBar.setAdGroupTimesMs(
                         markerTimes,
                         BooleanArray(markerTimes.size),

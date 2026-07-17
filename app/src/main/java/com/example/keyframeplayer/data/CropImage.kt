@@ -1,7 +1,10 @@
 package com.example.keyframeplayer.data
+import androidx.room.Entity
+import androidx.room.PrimaryKey
 
+@Entity(tableName = "crop_images")
 data class CropImage(
-    val id: String,
+    @PrimaryKey val id: String,
     val cropImagePath: String,
     val className: String,
     val score: Float,

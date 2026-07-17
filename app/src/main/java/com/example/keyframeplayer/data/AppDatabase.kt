@@ -1,13 +1,13 @@
 package com.example.keyframeplayer.data
 
 import android.content.Context
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
 
-class AppDatabase private constructor() {
-    private val cropImageDao = CropImageDao()
-
-    fun cropImageDao(): CropImageDao {
-        return cropImageDao
-    }
+@Database(entities = [CropImage::class], version = 1, exportSchema = false)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun cropImageDao(): CropImageDao
 
     companion object {
         @Volatile
@@ -15,7 +15,13 @@ class AppDatabase private constructor() {
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: AppDatabase().also { INSTANCE = it }
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "keyframe_database"
+                ).build()
+                INSTANCE = instance
+                instance
             }
         }
     }

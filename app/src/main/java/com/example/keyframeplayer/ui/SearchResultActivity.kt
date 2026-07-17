@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.keyframeplayer.data.AppDatabase
 import com.example.keyframeplayer.data.CropImage
+import com.example.keyframeplayer.data.CropImageDao
 import com.example.keyframeplayer.data.CropImageTimestamp
 import com.example.keyframeplayer.ui.theme.KeyframePlayerTheme
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +35,11 @@ class SearchResultActivity : ComponentActivity() {
 
     private lateinit var db: AppDatabase
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    fun onCreate(
+        savedInstanceState: Bundle?,
+        getAll: CropImageDao.() -> List<CropImage>,
+        getTimestampById: CropImageDao.(String) -> CropImageTimestamp?
+    ) {
         super.onCreate(savedInstanceState)
 
         db = AppDatabase.getInstance(this)
