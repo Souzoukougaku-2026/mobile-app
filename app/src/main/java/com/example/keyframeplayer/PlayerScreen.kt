@@ -38,14 +38,16 @@ import com.example.keyframeplayer.data.CropImage
 @UnstableApi
 @Composable
 fun PlayerScreen(
-    viewModel: SharedViewModel,
+    uri: Uri,
+    keyframes: List<CropImage>,
+    //viewModel: SharedViewModel,
     timeUs: Long
 ) {
     val context = LocalContext.current
-    val uri by viewModel.selectedUri.collectAsState()
+    //val uri by viewModel.selectedUri.collectAsState()
     //val keyframes by viewModel.keyframeItems.collectAsState()
 
-    val keyframes by viewModel.getCropImages(context).collectAsState(initial = emptyList())
+    //val keyframes by viewModel.getCropImages(context).collectAsState(initial = emptyList())
 
     var  isFullScreen by remember {mutableStateOf(false)}
     var selectedTabIndex by remember { mutableIntStateOf(0) }

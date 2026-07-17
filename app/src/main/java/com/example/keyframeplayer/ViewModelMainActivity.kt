@@ -63,12 +63,17 @@ class MainActivity : ComponentActivity() {
                         MainScreen(navController, sharedViewModel)
                     }
                     composable("player/{timeUs}") { backStackEntry ->
-                        val timeUs = backStackEntry.arguments
-                            ?.getString("timeUs")?.toLong() ?: 0L
+                        val timeUs = backStackEntry.arguments?.getString("timeUs")?.toLong() ?: 0L
 
-                        PlayerScreen(
-                            viewModel = sharedViewModel,
-                            timeUs = timeUs,
+                        // ViewModelから必要なデータを取り出す
+                        val uri by sharedViewModel.selectedUri.collectAsState()
+                        val keyframes by sharedViewModel.getCropImages(LocalContext.current).collectAsState(initial = emptyList())
+
+                        if (uri != null && keyframes.isNotEmpty()) {
+                            PlayerScreen(
+                                uri = uri!!,
+                                keyframes = keyframes,
+                                timeUs = timeUs
                         )
                     }
                 }
@@ -227,4 +232,5 @@ fun GreetingPreview() {
             sharedViewModel = SharedViewModel()
         )
     }
+}
 }
