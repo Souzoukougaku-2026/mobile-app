@@ -9,7 +9,7 @@ import com.example.keyframeplayer.util.KeyFrameUtils.saveBitmapToInternalStorage
 import com.example.keyframeplayer.data.AppDatabase
 import com.example.keyframeplayer.data.ClopImageDao
 import com.example.keyframeplayer.data.ClopImageEntity
-import com.example.keyframeplayer.data.ImageColor
+import com.example.keyframeplayer.data.BaseColor
 import com.example.keyframeplayer.data.BPoint
 import com.example.keyframeplayer.data.KeyFrameEntity
 import com.example.keyframeplayer.util.VideoInfo
@@ -102,7 +102,7 @@ class ImageRecognitionViewModel(application: Application) : AndroidViewModel(app
         val dummyClopEntity = ClopImageEntity(
             classname = list.random(),
             score = 1f,
-            color = ImageColor.entries.random (),
+            color = BaseColor.entries.random (),
             bboxPoint = BPoint (0f, 0f, 500f, 500f),
             idKeyFrame = entity.id
         )
