@@ -1,207 +1,120 @@
 package com.example.keyframeplayer
 
-import android.content.Context
 import android.content.Intent
-import android.media.MediaExtractor
-import android.media.MediaFormat
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.example.keyframeplayer.ui.theme.KeyframePlayerTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import androidx.lifecycle.viewmodel.compose.viewModel
-
+import com.example.keyframeplayer.ui.screen.DirectoryManagementScreen
+import com.example.keyframeplayer.ui.theme.KeyFramePlayerTheme
+import com.example.keyframeplayer.ui.viewmodel.VideoManagementViewModel
+import com.example.keyframeplayer.util.VideoUtils
+import java.io.File
 
 class MainActivity : ComponentActivity() {
+
+    // ViewModelの取得（状態とロジックの保持）
+    private val viewModel: VideoManagementViewModel by viewModels()
+
+    // 1秒ごとに権限状態をチェックするバックグラウンド処理の設定
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val checkStatusRunnable = object : Runnable {
+        override fun run() {
+            // 1. 永続化されたURIを取得
+            val persistedUri = viewModel.selectedUri.value
+                ?: contentResolver.persistedUriPermissions.firstOrNull()?.uri
+
+            // 2. アクセス可否をチェック
+            val pickedUri = persistedUri?.takeIf { VideoUtils.checkAccess(this@MainActivity, it) }
+            viewModel.onDirectoryPicked(pickedUri)
+            mainHandler.postDelayed(this, 1000)
+        }
+    }
+
+    // OSのフォルダ（ディレクトリ）選択画面を開き、選択結果と権限を受け取るシステム
+    private val pickDirLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri: Uri? ->
+        if (treeUri != null) {
+            val contentResolver = contentResolver
+            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+
+            // 過去に取得した古い永続権限があれば一度解放する
+            contentResolver.persistedUriPermissions.forEach {
+                contentResolver.releasePersistableUriPermission(it.uri, takeFlags)
+            }
+
+            // 新しく選択されたフォルダのアクセス権限を永続化（アプリ再起動後も有効化）
+            contentResolver.takePersistableUriPermission(treeUri, takeFlags)
+            viewModel.onDirectoryPicked(treeUri)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            KeyframePlayerTheme {
-                val navController = rememberNavController()
-                val sharedViewModel: SharedViewModel = viewModel()
 
-                NavHost(navController = navController, startDestination = "main") {
+        /*
+        lifecycleScope.launch {
+            // バックグラウンド（IO）で、定義済みのクリア関数を呼び出す
+            withContext(Dispatchers.IO) {
+                AppDatabase.clearDatabase(this@MainActivity)
+            }
+        }
+         */
 
-                    composable("main") {
-                        MainScreen(navController, sharedViewModel)
-                    }
+        // 画像が保存されている専用の「images」フォルダを指定する
+        val imageDir = File(this.filesDir, "images")
 
-                    composable("player/{timeUs}") { backStackEntry ->
-                        val timeUs = backStackEntry.arguments
-                            ?.getString("timeUs")?.toLong() ?: 0L
-
-                        PlayerScreen(
-                            viewModel = sharedViewModel,
-                            timeUs = timeUs
-                        )
-                    }
+        // フォルダが存在し、かつディレクトリであることを確認する
+        if (imageDir.exists() && imageDir.isDirectory) {
+            // 3. フォルダ内のすべてのファイルを安全に削除する
+            imageDir.listFiles()?.forEach { file ->
+                if (file.isFile) {
+                    file.delete()
                 }
             }
         }
-    }
-}
 
-// ── ユーティリティ（IOスレッドで呼ぶこと） ──────────────────
-fun getKeyframeTimes(context: Context, uri: Uri): List<Long> {
-    val extractor = MediaExtractor()
-    extractor.setDataSource(context, uri, null)
+        setContent {
+            KeyFramePlayerTheme(dynamicColor = false) {
+                // ViewModelから各状態（State）をリアルタイムに監視
+                val currentUri by viewModel.selectedUri.collectAsState()
+                val isAccessible by viewModel.isAccessible.collectAsState()
+                val videoInfos by viewModel.videoInfos.collectAsState()
+                val isLoading by viewModel.isLoading.collectAsState()
 
-    var videoTrackIndex = -1
-    for (i in 0 until extractor.trackCount) {
-        val mime = extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)
-        if (mime?.startsWith("video/") == true) { videoTrackIndex = i; break }
-    }
-    if (videoTrackIndex == -1) return emptyList()
-
-    extractor.selectTrack(videoTrackIndex)
-    val times = mutableListOf<Long>()
-    while (true) {
-        val t = extractor.sampleTime
-        if (t < 0) break
-        if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) times.add(t)
-        extractor.advance()
-    }
-    extractor.release()
-    return times
-}
-
-fun getKeyframeItems(
-    context: Context,
-    uri: Uri,
-    timesUs: List<Long>,
-    limit: Int = 10
-): List<KeyframeItem> {
-    val retriever = MediaMetadataRetriever()
-    retriever.setDataSource(context, uri)
-    val items = mutableListOf<KeyframeItem>()
-    for (timeUs in timesUs.take(limit)) {
-        retriever.getFrameAtTime(
-            timeUs,
-            MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-        )?.let { items.add(KeyframeItem(timeUs, it)) }
-    }
-    retriever.release()
-    return items
-}
-
-
-// ── メイン画面 ────────────────────────────────────────────────
-@Composable
-fun MainScreen(
-    navController: NavController,
-    sharedViewModel: SharedViewModel,  // ← 追加
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
-    var keyframeItems by remember { mutableStateOf<List<KeyframeItem>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
-
-    // URIが変わったらバックグラウンドで取得
-    LaunchedEffect(selectedUri) {
-        val uri = selectedUri ?: return@LaunchedEffect
-        isLoading = true
-        keyframeItems = withContext(Dispatchers.IO) {
-            val times = getKeyframeTimes(context, uri)
-            getKeyframeItems(context, uri, times)
-        }
-        isLoading = false
-    }
-
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let {
-            context.contentResolver.takePersistableUriPermission(
-                it,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-            sharedViewModel.setUri(it)  // ← ViewModelに保存
-            selectedUri = it
-        }
-    }
-
-    Column(
-        modifier = modifier.fillMaxSize().padding(16.dp)
-    ) {
-        Button(onClick = { launcher.launch(arrayOf("video/*")) }) {
-            Text("動画を選択")
-        }
-
-        selectedUri?.let { Text("選択された動画:\n$it") }
-
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(keyframeItems) { item ->
-                    Image(
-                        bitmap = item.bitmap.asImageBitmap(),
-                        contentDescription = "Keyframe",
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .size(120.dp)
-                            .clickable {
-                                navController.navigate("player/${item.timeUs}")
-                            }
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    // 💡 修正：videoInfos を画面コンポーザブルへそのまま引き渡す
+                    // （※画面側である DirectoryManagementScreen の引数名も videoInfos への変更が必要です）
+                    DirectoryManagementScreen(
+                        currentUri = currentUri?.toString() ?: "None",
+                        isAccessible = isAccessible,
+                        videoInfos = videoInfos,
+                        isLoading = isLoading,
+                        onChooseClick = { pickDirLauncher.launch(null) }
                     )
                 }
             }
         }
     }
-}
 
+    // アプリが画面に表示されたら、1秒ごとのアクセス権限チェックを開始
+    override fun onResume() {
+        super.onResume()
+        mainHandler.post(checkStatusRunnable)
+    }
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    KeyframePlayerTheme {
-        MainScreen(
-            navController = rememberNavController(),
-            sharedViewModel = SharedViewModel()
-        )
+    // アプリが裏に隠れたら、バッテリー消費を抑えるためにチェックを停止
+    override fun onPause() {
+        super.onPause()
+        mainHandler.removeCallbacks(checkStatusRunnable)
     }
 }
