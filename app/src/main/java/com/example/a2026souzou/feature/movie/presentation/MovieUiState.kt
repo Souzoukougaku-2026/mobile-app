@@ -4,6 +4,9 @@ import androidx.compose.runtime.Immutable
 
 @Immutable
 data class MovieUiState(
+    val videoUri: android.net.Uri? = null,
+    val keyframes: List<com.example.a2026souzou.core.domain.model.CropImage> = emptyList(),
+
     val currentTime: Float = 0f,
     // 時間設定
     val totalDurationSeconds: Float = 48 * 3600f, // 全体時間 (48時間)

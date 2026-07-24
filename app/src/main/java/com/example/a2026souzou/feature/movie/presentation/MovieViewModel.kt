@@ -1,5 +1,6 @@
 package com.example.a2026souzou.feature.movie.presentation
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.a2026souzou.feature.movie.domain.MovieRepository
@@ -22,6 +23,31 @@ class MovieViewModel @Inject constructor(
     init {
         fetchBarData()
         fetchDetailedBarData()
+        fetchStoredKeyframes() //  保存済みデータの監視を開始
+    }
+
+    //  DBから保存されたキーフレームを取得してUI Stateを更新
+    private fun fetchStoredKeyframes() {
+        viewModelScope.launch {
+            repository.getStoredKeyframes().collect { keyframes ->
+                _uiState.update { it.copy(keyframes = keyframes) }
+            }
+        }
+    }
+
+    fun onVideoSelected(uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(videoUri = uri, isLoading = true) }
+
+            // リポジトリを通じて動画処理（抽出・保存）を実行
+            val result = repository.processVideo(uri)
+
+            result.onFailure { error ->
+                _uiState.update { it.copy(error = error.message) }
+            }
+
+            _uiState.update { it.copy(isLoading = false) }
+        }
     }
 
     private fun fetchBarData() {
@@ -76,4 +102,5 @@ class MovieViewModel @Inject constructor(
             it.copy(visibleRangeStart = startProgress.coerceIn(0f, 1f - it.visibleRangeWidth))
         }
     }
+
 }
