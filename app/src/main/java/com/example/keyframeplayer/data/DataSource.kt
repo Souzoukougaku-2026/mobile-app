@@ -19,7 +19,7 @@ import com.example.keyframeplayer.model.Topic
 import com.example.keyframeplayer.R
 
 object DataSource {
-    val topics = listOf(
+    /*val topics = listOf(
         Topic("architecture", 202, R.drawable.architecture, R.color.white),
         Topic("automotive", 30, R.drawable.automotive,imageColor = R.color.black),
         Topic("biology", 90, R.drawable.biology,imageColor = R.color.black),
@@ -44,5 +44,6 @@ object DataSource {
         Topic("photography", 321, R.drawable.photography,imageColor = R.color.black),
         Topic("physics", 41, R.drawable.physics,imageColor = R.color.black),
         Topic("tech", 118, R.drawable.tech,imageColor = R.color.black),
-    )
+    )*/
+    val topics = listOf<Topic>()
 }

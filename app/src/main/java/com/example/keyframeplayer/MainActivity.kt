@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
         override fun run() {
             // 1. 永続化されたURIを取得
             val persistedUri = viewModel.selectedUri.value
-                ?: contentResolver.persistedUriPermissions.firstOrNull()?.uri
+                ?: contentResolver.persistedUriPermissions.filter { android.provider.DocumentsContract.isTreeUri(it.uri) }.firstOrNull()?.uri
 
             // 2. アクセス可否をチェック
             val pickedUri = persistedUri?.takeIf { VideoUtils.checkAccess(this@MainActivity, it) }

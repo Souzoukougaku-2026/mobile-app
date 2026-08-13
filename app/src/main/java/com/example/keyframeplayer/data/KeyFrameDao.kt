@@ -10,7 +10,7 @@ import java.util.UUID
 interface KeyFrameDao {
     // データの挿入(上書きスキップ、非同期処理)
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertKeyFrame(keyFrame: KeyFrameEntity): Void
+    suspend fun insertKeyFrame(keyFrame: KeyFrameEntity): Long
 
     // データの検索(keyFrameIDより)
     @Query("SELECT * FROM keyFrames WHERE id = :keyFrameID")

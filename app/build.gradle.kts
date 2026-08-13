@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "com.example.keyframeplayer"
-    compileSdk = 36 // SDK 36に引き上げ
+    compileSdk = 37 // SDK 36に引き上げ→SDK 37に合わせる
 
     defaultConfig {
         applicationId = "com.example.keyframeplayer"
         minSdk = 30 // 移植元に合わせて30に設定（安全のため）
-        targetSdk = 36
+        targetSdk = 37  //３６から３７に引き上げ
         versionCode = 1
         versionName = "1.0"
 
@@ -60,7 +60,7 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")          // ファイル操作
 
     // Room Database
-    val roomVersion = "2.6.1"
+    val roomVersion = "2.8.4"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
