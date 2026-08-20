@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
     <style name="Theme.KeyframePlayer" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- 以下を追記：Baseテーマの定義 -->
+    <style name="Base.Theme._2026souzou" parent="Theme.Material3.DayNight.NoActionBar">
+    <!-- 必要に応じてここに色などのカスタマイズを追加 -->
+    </style>
+
+    <!-- テーマ本体の定義 -->
+    <style name="Theme._2026souzou" parent="Base.Theme._2026souzou" />
 </resources>

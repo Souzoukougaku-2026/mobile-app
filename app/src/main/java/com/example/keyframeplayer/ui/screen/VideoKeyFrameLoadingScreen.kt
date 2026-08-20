@@ -19,7 +19,8 @@ fun VideoKeyFrameLoadingScreen(
     currentUri: String,
     isAccessible: Boolean,
     videoInfos: List<VideoInfo>,
-    onChooseClick: () -> Unit
+    onChooseClick: () -> Unit,
+    onFinished: () -> Unit
 ) {
     // 1. 画面が表示されたタイミング、または videoInfos が準備できたタイミングで自動実行
     LaunchedEffect(videoInfos) {
@@ -36,9 +37,10 @@ fun VideoKeyFrameLoadingScreen(
     // 4. 状態に応じて画面を分岐描画する
     if (isCompleted) {
         // 処理完了時は ListUpScreen を描画
-        ListUpScreen(
+       /* ListUpScreen(
             modifier = Modifier.fillMaxSize()
-        )
+        )*/
+        LaunchedEffect(Unit) { onFinished() }// ListUpScreen() を呼び出す代わりにコールバックを実行
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
             // --- 通常の画面コンテンツ ---
