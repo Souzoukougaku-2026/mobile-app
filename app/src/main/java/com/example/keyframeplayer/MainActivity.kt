@@ -10,16 +10,29 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.keyframeplayer.feature.list.presentation.ListViewModel
+import com.example.keyframeplayer.feature.movie.presentation.MovieRoute
+import com.example.keyframeplayer.feature.movie.presentation.MovieViewModel
 import com.example.keyframeplayer.ui.screen.DirectoryManagementScreen
+import com.example.keyframeplayer.ui.screen.ListUpScreen
 import com.example.keyframeplayer.ui.theme.KeyFramePlayerTheme
 import com.example.keyframeplayer.ui.viewmodel.VideoManagementViewModel
 import com.example.keyframeplayer.util.VideoUtils
+import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     // ViewModelの取得（状態とロジックの保持）
@@ -91,14 +104,19 @@ class MainActivity : ComponentActivity() {
                 val videoInfos by viewModel.videoInfos.collectAsState()
                 val isLoading by viewModel.isLoading.collectAsState()
 
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     // 💡 修正：videoInfos を画面コンポーザブルへそのまま引き渡す
                     // （※画面側である DirectoryManagementScreen の引数名も videoInfos への変更が必要です）
-                    DirectoryManagementScreen(
+                    /*DirectoryManagementScreen(
                         currentUri = currentUri?.toString() ?: "None",
                         isAccessible = isAccessible,
                         videoInfos = videoInfos,
                         isLoading = isLoading,
+                        onChooseClick = { pickDirLauncher.launch(null) }
+                    )*/
+
+                    AppNavigation(
+                        videoViewModel = viewModel,  //videoViewModel,
                         onChooseClick = { pickDirLauncher.launch(null) }
                     )
                 }
@@ -116,5 +134,57 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         mainHandler.removeCallbacks(checkStatusRunnable)
+    }
+}
+
+@Composable
+fun AppNavigation(
+    videoViewModel: VideoManagementViewModel,
+    onChooseClick: () -> Unit
+) {
+    val navController = rememberNavController()
+
+    NavHost(
+        navController = navController,
+        startDestination = "directory_management",
+    ) {
+        composable("directory_management") {
+            val currentUri by videoViewModel.selectedUri.collectAsState()
+            val isAccessible by videoViewModel.isAccessible.collectAsState()
+            val videoInfos by videoViewModel.videoInfos.collectAsState()
+            val isLoading by videoViewModel.isLoading.collectAsState()
+
+            DirectoryManagementScreen(
+                currentUri = currentUri?.toString() ?: "None",
+                isAccessible = isAccessible,
+                videoInfos = videoInfos,
+                isLoading = isLoading,
+                onChooseClick = onChooseClick,
+                onProcessingFinished = {
+                    navController.navigate("list") {
+                        popUpTo("directory_management") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("list") {
+            val listViewModel: ListViewModel = hiltViewModel()
+            val uiState by listViewModel.uiState.collectAsStateWithLifecycle()
+            ListUpScreen(
+                items = uiState.items,
+                onSortByDate = { isAsc -> listViewModel.setSortOrder(isAsc) },
+                onNavigateToDetail = { image ->
+                    navController.navigate("movie")
+                } // ここを修正しました
+            )
+        }
+        composable("movie") {
+            val movieViewModel: MovieViewModel = hiltViewModel()
+            MovieRoute(viewModel = movieViewModel)
+        }
+        /*composable("list") {
+            val viewModel: ListViewModel = hiltViewModel()
+            ListRoute(viewModel = viewModel)
+        }*/
     }
 }

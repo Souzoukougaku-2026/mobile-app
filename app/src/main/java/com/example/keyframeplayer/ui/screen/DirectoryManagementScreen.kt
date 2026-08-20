@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.keyframeplayer.ui.viewmodel.ImageRecognitionViewModel
 import com.example.keyframeplayer.util.VideoInfo
@@ -36,10 +37,11 @@ fun DirectoryManagementScreen(
     isAccessible: Boolean,
     videoInfos: List<VideoInfo>,
     isLoading: Boolean,
-    onChooseClick: () -> Unit
+    onChooseClick: () -> Unit,
+    onProcessingFinished: () -> Unit
 ) {
     val context = LocalContext.current
-    val keyFrameViewModel: ImageRecognitionViewModel = viewModel()
+    val keyFrameViewModel: ImageRecognitionViewModel = hiltViewModel()
 
     // --- 追加: 現在の画面状態を管理するState ---
     var currentScreenState by remember { mutableStateOf(ManagementScreenState.SELECT_DIRECTORY) }
@@ -74,7 +76,8 @@ fun DirectoryManagementScreen(
                 currentUri = currentUri,
                 isAccessible = isAccessible,
                 videoInfos = confirmedVideoInfos,
-                onChooseClick = onChooseClick
+                onChooseClick = onChooseClick,
+                onFinished = onProcessingFinished
             )
         }
         ManagementScreenState.SELECT_DIRECTORY -> {
@@ -125,7 +128,7 @@ fun DirectoryManagementScreen(
     }
 
     if (showBottomSheet) {
-        CompositionLocalProvider(LocalRippleConfiguration provides null) {
+        //CompositionLocalProvider(LocalRippleConfiguration provides null) {
             ModalBottomSheet(
                 onDismissRequest = { showBottomSheet = false },
                 sheetState = sheetState
@@ -370,6 +373,6 @@ fun DirectoryManagementScreen(
                     }
                 }
             }
-        }
+        //}
     }
 }
