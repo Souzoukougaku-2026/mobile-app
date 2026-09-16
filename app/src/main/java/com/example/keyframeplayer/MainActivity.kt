@@ -146,6 +146,7 @@ fun AppNavigation(
 
     NavHost(
         navController = navController,
+        //startDestination = "movie",
         startDestination = "directory_management",
     ) {
         composable("directory_management") {

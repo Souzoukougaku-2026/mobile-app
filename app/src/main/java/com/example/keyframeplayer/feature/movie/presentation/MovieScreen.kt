@@ -76,6 +76,8 @@ fun MovieScreen(
         pageCount = { uiState.keyframes.size }
     )
 
+    val activeKeyframe = uiState.keyframes.getOrNull(pagerState.currentPage)
+
     
     // スクロール位置の監視を最適化 (ANR対策)
     LaunchedEffect(scrollState) {
@@ -194,7 +196,10 @@ fun MovieScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                BottomInfoArea(uiState.currentTime)
+                BottomInfoArea(
+                    currentTime = uiState.currentTime,
+                    activeKeyframe = activeKeyframe
+                /*uiState.currentTime*/)
             }
         }
     }
@@ -257,6 +262,7 @@ fun VideoPlayerItem(
                     useController = true
                     // シークバーのマーカー表示ロジック
                     setControllerVisibilityListener(androidx.media3.ui.PlayerView.ControllerVisibilityListener { visibility ->
+                        isControllerVisible = (visibility == android.view.View.VISIBLE)
                         if (visibility == android.view.View.VISIBLE) {
                             val timeBar =
                                 findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)
@@ -296,7 +302,7 @@ fun VideoPlayerItem(
             }
         )
 
-        /*// フルスクリーン切り替えボタン
+        // フルスクリーン切り替えボタン
         if (isControllerVisible) {
             IconButton(
                 onClick = { onToggleFullScreen() },
@@ -311,6 +317,6 @@ fun VideoPlayerItem(
                     tint = Color.White
                 )
             }
-        }*/
+        }
     }
 }

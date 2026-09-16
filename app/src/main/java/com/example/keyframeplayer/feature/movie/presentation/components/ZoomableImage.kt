@@ -25,29 +25,53 @@ import androidx.compose.ui.unit.toSize
 
 @Composable
 fun ZoomableImage(
-    painter: Painter,
-    initialTopLeft: Offset, // (x, y) 0-100, y=0 is bottom
+    painter: Painter? = null,
+    initialTopLeft: Offset, // (x, y) 0-100, y=0 is bottom (unless isPixelCoordinates is true)
     initialBottomRight: Offset,
+    imagePath: String? = null,
+    isPixelCoordinates: Boolean = false,
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(Size.Zero) }
     
-    val imageSize = painter.intrinsicSize
+    val currentPainter = if (imagePath != null) {
+        coil.compose.rememberAsyncImagePainter(imagePath)
+    } else {
+        painter
+    }
+    
+    val imageSize = currentPainter?.intrinsicSize ?: Size.Unspecified
 
     // 初期配置計算
     LaunchedEffect(containerSize, imageSize) {
         if (containerSize == Size.Zero || imageSize == Size.Unspecified) return@LaunchedEffect
         
-        val targetW = (initialBottomRight.x - initialTopLeft.x) / 100f
-        val targetH = (initialTopLeft.y - initialBottomRight.y) / 100f
+        val targetW = if (isPixelCoordinates) {
+            (initialBottomRight.x - initialTopLeft.x) / imageSize.width
+        } else {
+            (initialBottomRight.x - initialTopLeft.x) / 100f
+        }
+        val targetH = if (isPixelCoordinates) {
+            (initialBottomRight.y - initialTopLeft.y) / imageSize.height
+        } else {
+            (initialTopLeft.y - initialBottomRight.y) / 100f
+        }
         
         val sX = containerSize.width / (imageSize.width * targetW)
         val sY = containerSize.height / (imageSize.height * targetH)
         scale = minOf(sX, sY)
         
-        val centerX = (initialTopLeft.x + initialBottomRight.x) / 200f
-        val centerY = (100f - (initialTopLeft.y + initialBottomRight.y) / 2f) / 100f
+        val centerX = if (isPixelCoordinates) {
+            ((initialTopLeft.x + initialBottomRight.x) / 2f) / imageSize.width
+        } else {
+            (initialTopLeft.x + initialBottomRight.x) / 200f
+        }
+        val centerY = if (isPixelCoordinates) {
+            ((initialTopLeft.y + initialBottomRight.y) / 2f) / imageSize.height
+        } else {
+            (100f - (initialTopLeft.y + initialBottomRight.y) / 2f) / 100f
+        }
         
         offset = Offset(
             x = (containerSize.width / 2f) - (imageSize.width * scale * centerX),
@@ -84,19 +108,27 @@ fun ZoomableImage(
                 }
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                if (imageSize != Size.Unspecified) {
+                if (imageSize != Size.Unspecified && currentPainter != null) {
                     withTransform({
                         translate(offset.x, offset.y)
                         scale(scale, scale, Offset.Zero)
                     }) {
-                        with(painter) {
+                        with(currentPainter) {
                             draw(imageSize)
                         }
 
-                        val left = initialTopLeft.x / 100f * imageSize.width
-                        val top = (100f - initialTopLeft.y) / 100f * imageSize.height
-                        val rWidth = (initialBottomRight.x - initialTopLeft.x) / 100f * imageSize.width
-                        val rHeight = (initialTopLeft.y - initialBottomRight.y) / 100f * imageSize.height
+                        val left = if (isPixelCoordinates) initialTopLeft.x else initialTopLeft.x / 100f * imageSize.width
+                        val top = if (isPixelCoordinates) initialTopLeft.y else (100f - initialTopLeft.y) / 100f * imageSize.height
+                        val rWidth = if (isPixelCoordinates) {
+                            initialBottomRight.x - initialTopLeft.x
+                        } else {
+                            (initialBottomRight.x - initialTopLeft.x) / 100f * imageSize.width
+                        }
+                        val rHeight = if (isPixelCoordinates) {
+                            initialBottomRight.y - initialTopLeft.y
+                        } else {
+                            (initialTopLeft.y - initialBottomRight.y) / 100f * imageSize.height
+                        }
                         
                         drawRect(
                             color = Color.Red,
