@@ -1,6 +1,7 @@
 package com.example.keyframeplayer.data
 
-import  androidx.room.ColumnInfo
+import androidx.room.ColumnInfo
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
@@ -50,7 +51,7 @@ data class ClopImageEntity(
     val classname: String,
     val score: Float,
     val color: BaseColor,
-    val bboxPoint: BPoint,
+    @Embedded val bboxPoint: BPoint,
 
     @ColumnInfo(index = true)
     val idKeyFrame: UUID
