@@ -66,6 +66,40 @@ fun DirectoryManagementScreen(
     val isFabEnabled = isAccessible && !isLoading && videoInfos.isNotEmpty()
     val scope = rememberCoroutineScope()
 
+    var hasStartedLoading by remember {
+        mutableStateOf(false)
+    }
+
+    var toastShownForCurrentLoad by remember {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(
+        isLoading,
+        isAccessible,
+        videoInfos.isEmpty()
+    ) {
+        if (isLoading) {
+            // ロード開始
+            hasStartedLoading = true
+            toastShownForCurrentLoad = false
+        } else if (
+            hasStartedLoading &&
+            !toastShownForCurrentLoad &&
+            isAccessible &&
+            videoInfos.isEmpty()
+        ) {
+            Toast.makeText(
+                context,
+                "動画が見つかりませんでした",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            toastShownForCurrentLoad = true
+        }
+    }
+
+
     when (currentScreenState) {
         ManagementScreenState.LOADING -> {
             // --- 追加: ローディング画面の呼び出し ---
@@ -352,7 +386,11 @@ fun DirectoryManagementScreen(
                                         currentScreenState = ManagementScreenState.LOADING
                                     }
                                 } else {
-                                    Toast.makeText(context, "動画範囲を選択してください", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        "動画範囲を選択してください",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             },
                         ) {
