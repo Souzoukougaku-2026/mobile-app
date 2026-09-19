@@ -56,6 +56,11 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.3.1") // 動画再生
     implementation("androidx.media3:media3-ui:1.3.1")        // 動画UI
 
+    implementation(libs.litert)
+    implementation(libs.google.litert.gpu)
+    implementation(libs.litert.gpu.api)
+    implementation(libs.litert.metadata)
+
     // --- 移植元から追加したライブラリ ---
     implementation("androidx.compose.material:material-icons-extended") // 拡張アイコン
     implementation("androidx.documentfile:documentfile:1.0.1")          // ファイル操作
