@@ -48,6 +48,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.work.runtime.ktx)
 
     // --- 移植先（現在）の固有ライブラリ ---
     implementation("androidx.compose.foundation:foundation")
