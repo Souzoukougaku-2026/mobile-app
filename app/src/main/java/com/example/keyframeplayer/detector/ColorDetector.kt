@@ -1,4 +1,4 @@
-package com.example.wasuremono_prj.joint
+package com.example.keyframeplayer.detector
 
 import android.graphics.Bitmap
 import android.graphics.Color
