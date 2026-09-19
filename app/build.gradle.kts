@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    id("com.google.devtools.ksp") version "2.2.10-2.0.2"
+    alias(libs.plugins.google.devtools.ksp)
 }
 
 android {
@@ -60,17 +60,16 @@ dependencies {
     implementation(libs.litert)
     implementation(libs.google.litert.gpu)
     implementation(libs.litert.gpu.api)
+    implementation(libs.litert.support.api)
     implementation(libs.litert.metadata)
 
-    // --- 移植元から追加したライブラリ ---
     implementation("androidx.compose.material:material-icons-extended") // 拡張アイコン
     implementation("androidx.documentfile:documentfile:1.0.1")          // ファイル操作
 
     // Room Database
-    val roomVersion = "2.6.1"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
-    ksp("androidx.room:room-compiler:$roomVersion")
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     // ViewModel & Lifecycle (最新の 2.11.0 に統一)
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
