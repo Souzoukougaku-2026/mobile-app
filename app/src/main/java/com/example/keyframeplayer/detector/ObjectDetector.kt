@@ -1,4 +1,4 @@
-package com.example.wasuremono_prj.joint
+package com.example.keyframeplayer.detector
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -8,8 +8,8 @@ import android.graphics.Matrix
 import android.graphics.RectF
 import android.util.Log
 import androidx.core.graphics.createBitmap
-import com.example.wasuremono_prj.data.Config
-import com.example.wasuremono_prj.data.Detection
+import com.example.keyframeplayer.data.Config
+import com.example.keyframeplayer.data.Detection
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.support.common.FileUtil
@@ -81,9 +81,9 @@ class ObjectDetector(private val context: Context) {
         }
     }
 
-    fun runDetect(originalBitmap: Bitmap) {
+    fun runDetect(originalBitmap: Bitmap) : List<Detection> {
         val totalStart = System.nanoTime()
-        val interp = interpreter ?: return
+        val interp = interpreter ?: return listOf()
 
         lateinit var letterboxedBitmap: Bitmap
 
@@ -160,9 +160,6 @@ class ObjectDetector(private val context: Context) {
         val fps = 1000f / (now - lastTime)
         lastTime = now
 
-        logTime("6_callback") {
-            onResults?.invoke(finalResults, fps)
-        }
 
         logTime("7_recycle") {
             letterboxedBitmap.recycle()
@@ -171,6 +168,8 @@ class ObjectDetector(private val context: Context) {
 
         val totalMs = (System.nanoTime() - totalStart) / 1_000_000.0
         Log.d("TIME_DEBUG", "TOTAL : ${"%.2f".format(totalMs)} ms")
+
+        return finalResults
     }
 
     private fun finalLetterbox(bitmap: Bitmap, size: Int, rotation: Int = 0): Triple<Bitmap, Float, Pair<Float, Float>> {
