@@ -52,10 +52,10 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
 
     // --- 移植先（現在）の固有ライブラリ ---
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.navigation:navigation-compose:2.7.7")
-    implementation("androidx.media3:media3-exoplayer:1.3.1") // 動画再生
-    implementation("androidx.media3:media3-ui:1.3.1")        // 動画UI
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.media3.exoplayer) // 動画再生
+    implementation(libs.androidx.media3.ui)        // 動画UI
 
     implementation(libs.litert)
     implementation(libs.google.litert.gpu)
@@ -63,8 +63,8 @@ dependencies {
     implementation(libs.litert.support.api)
     implementation(libs.litert.metadata)
 
-    implementation("androidx.compose.material:material-icons-extended") // 拡張アイコン
-    implementation("androidx.documentfile:documentfile:1.0.1")          // ファイル操作
+    implementation(libs.androidx.compose.material.icons.extended) // 拡張アイコン
+    implementation(libs.androidx.documentfile)          // ファイル操作
 
     // Room Database
     implementation(libs.androidx.room.runtime)
@@ -72,8 +72,8 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     // ViewModel & Lifecycle (最新の 2.11.0 に統一)
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     // --- テスト関連 ---
     testImplementation(libs.junit)
