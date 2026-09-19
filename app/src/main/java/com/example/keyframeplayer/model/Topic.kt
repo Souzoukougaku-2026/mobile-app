@@ -17,15 +17,16 @@ package com.example.keyframeplayer.model
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.annotation.ColorRes
 
 class timeStamp(
     val realtime: Long = System.currentTimeMillis()
 )
 data class Topic(
-    val class_name: String,
+    @StringRes val class_name: Int,
     val fileTime: Int,
     @DrawableRes val imageRes: Int,
-    @DrawableRes val imageColor: Int
+    @ColorRes val imageColor: Int
 ) {
 
     companion object {

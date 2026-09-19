@@ -20,6 +20,33 @@ import com.example.keyframeplayer.R
 
 object DataSource {
     val topics = listOf(
+        Topic(R.string.architecture, 202, R.drawable.architecture, R.color.white),
+        Topic(R.string.automotive, 30, R.drawable.automotive,imageColor = R.color.black),
+        Topic(R.string.biology, 90, R.drawable.biology,imageColor = R.color.black),
+        Topic(R.string.crafts, 121, R.drawable.crafts,imageColor = R.color.black),
+        Topic(R.string.business, 78, R.drawable.business, imageColor = R.color.white),
+        Topic(R.string.culinary, 118, R.drawable.culinary, imageColor = R.color.white),
+        Topic(R.string.design, 423, R.drawable.design,imageColor = R.color.black),
+        Topic(R.string.ecology, 28, R.drawable.ecology, imageColor = R.color.white),
+        Topic(R.string.engineering, 67, R.drawable.engineering,imageColor = R.color.black),
+        Topic(R.string.fashion, 92, R.drawable.fashion,imageColor = R.color.black),
+        Topic(R.string.finance, 100, R.drawable.finance, imageColor = R.color.white),
+        Topic(R.string.film, 165, R.drawable.film, imageColor = R.color.white),
+        Topic(R.string.gaming, 37, R.drawable.gaming,imageColor = R.color.black),
+        Topic(R.string.geology, 290, R.drawable.geology, imageColor = R.color.white),
+        Topic(R.string.drawing, 326, R.drawable.drawing, imageColor = R.color.white),
+        Topic(R.string.history, 189, R.drawable.history, imageColor = R.color.white),
+        Topic(R.string.journalism, 96, R.drawable.journalism,imageColor = R.color.black),
+        Topic(R.string.law, 58, R.drawable.law,imageColor = R.color.black),
+        Topic(R.string.lifestyle, 305, R.drawable.lifestyle, imageColor = R.color.white),
+        Topic(R.string.music, 212, R.drawable.music,imageColor = R.color.black),
+        Topic(R.string.painting, 172, R.drawable.painting, imageColor = R.color.white),
+        Topic(R.string.photography, 321, R.drawable.photography,imageColor = R.color.black),
+        Topic(R.string.physics, 41, R.drawable.physics,imageColor = R.color.black),
+        Topic(R.string.tech, 118, R.drawable.tech,imageColor = R.color.black),
+    )
+    /*
+    val topics = listOf(
         Topic("architecture", 202, R.drawable.architecture, R.color.white),
         Topic("automotive", 30, R.drawable.automotive,imageColor = R.color.black),
         Topic("biology", 90, R.drawable.biology,imageColor = R.color.black),
@@ -45,4 +72,6 @@ object DataSource {
         Topic("physics", 41, R.drawable.physics,imageColor = R.color.black),
         Topic("tech", 118, R.drawable.tech,imageColor = R.color.black),
     )
+
+     */
 }
