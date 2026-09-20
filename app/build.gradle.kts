@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.keyframeplayer"
-    compileSdk = 36 // SDK 36に引き上げ
+    compileSdk = 37 // SDK 36に引き上げ
 
     defaultConfig {
         applicationId = "com.example.keyframeplayer"
