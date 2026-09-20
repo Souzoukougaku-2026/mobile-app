@@ -48,10 +48,7 @@ fun VideoKeyFrameLoadingScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(text = "動画のキーフレーム抽出画面")
-                Spacer(modifier = Modifier.height(16.dp))
-            }
+            ) {}
 
             // --- 処理中のオーバーレイ表示 ---
             // isLoading が true のときだけ、画面全体に薄暗い膜と円状の進捗バーを重ねる
@@ -63,7 +60,11 @@ fun VideoKeyFrameLoadingScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         // 円状の進捗バー（progressには 0.0〜1.0 の値が入る）
-                        CircularProgressIndicator(progress = { progress })
+                        CircularProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.size(100.dp),
+                            strokeWidth = 8.dp
+                        )
 
                         Spacer(modifier = Modifier.height(12.dp))
 
