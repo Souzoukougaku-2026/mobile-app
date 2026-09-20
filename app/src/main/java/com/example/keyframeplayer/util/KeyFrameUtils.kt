@@ -143,7 +143,7 @@ object KeyFrameUtils {
             directory.mkdirs()
         }
 
-        val fileName = UUID.randomUUID().toString()
+        val fileName = "${UUID.randomUUID()}.png"
 
         // 3. 保存するファイルを作成する
         val file = File(directory, fileName)

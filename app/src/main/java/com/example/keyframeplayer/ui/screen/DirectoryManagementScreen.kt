@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.keyframeplayer.model.Topic
 import com.example.keyframeplayer.ui.viewmodel.ImageRecognitionViewModel
 import com.example.keyframeplayer.util.VideoInfo
 import kotlinx.coroutines.launch
@@ -36,6 +37,7 @@ fun DirectoryManagementScreen(
     isAccessible: Boolean,
     videoInfos: List<VideoInfo>,
     isLoading: Boolean,
+    onTopicClick: (Topic, List<VideoInfo>) -> Unit, // List<VideoInfo> を追加
     onChooseClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -74,6 +76,7 @@ fun DirectoryManagementScreen(
                 currentUri = currentUri,
                 isAccessible = isAccessible,
                 videoInfos = confirmedVideoInfos,
+                onTopicClick = onTopicClick,
                 onChooseClick = onChooseClick
             )
         }

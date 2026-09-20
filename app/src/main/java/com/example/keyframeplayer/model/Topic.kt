@@ -1,34 +1,29 @@
-/*
- * Copyright (C) 2023 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package com.example.keyframeplayer.model
 
 import androidx.annotation.DrawableRes
-import androidx.annotation.StringRes
+import com.example.keyframeplayer.R
+import java.util.Locale
 
-class timeStamp(
-    val realtime: Long = System.currentTimeMillis()
-)
 data class Topic(
     val class_name: String,
-    val fileTime: Int,
-    @DrawableRes val imageRes: Int,
-    @DrawableRes val imageColor: Int
+    val fileTime: Long, // マイクロ秒
+    val imagePath: String? = null,
+    val moviePath: android.net.Uri? = null,
+    @DrawableRes val imageRes: Int = R.drawable.ic_launcher_foreground,
+    val imageColor: Int = 0,
+    val realTime: Long = 0L,
+    val bboxLeft: Float = 0f,
+    val bboxTop: Float = 0f,
+    val bboxRight: Float = 500f,
+    val bboxBottom: Float = 500f
 ) {
-
-    companion object {
-        fun sortedBy(function: () -> Int) {}
-    }
+    // マイクロ秒を 00:00:00 形式に変換
+    val formattedTime: String
+        get() {
+            val totalSeconds = fileTime / 1_000_000
+            val h = totalSeconds / 3600
+            val m = (totalSeconds % 3600) / 60
+            val s = totalSeconds % 60
+            return String.format(Locale.getDefault(), "%02d:%02d:%02d", h, m, s)
+        }
 }

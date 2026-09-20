@@ -11,9 +11,16 @@ import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.example.keyframeplayer.model.Topic
+import com.example.keyframeplayer.ui.movie.MovieRoute
+import com.example.keyframeplayer.ui.movie.MovieViewModel
 import com.example.keyframeplayer.ui.screen.DirectoryManagementScreen
 import com.example.keyframeplayer.ui.theme.KeyFramePlayerTheme
 import com.example.keyframeplayer.ui.viewmodel.VideoManagementViewModel
@@ -24,6 +31,7 @@ class MainActivity : ComponentActivity() {
 
     // ViewModelの取得（状態とロジックの保持）
     private val viewModel: VideoManagementViewModel by viewModels()
+    private val movieViewModel: MovieViewModel by viewModels()
 
     // 1秒ごとに権限状態をチェックするバックグラウンド処理の設定
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -70,6 +78,7 @@ class MainActivity : ComponentActivity() {
         }
          */
 
+        /*
         // 画像が保存されている専用の「images」フォルダを指定する
         val imageDir = File(this.filesDir, "images")
 
@@ -82,25 +91,49 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        */
 
         setContent {
             KeyFramePlayerTheme(dynamicColor = false) {
-                // ViewModelから各状態（State）をリアルタイムに監視
-                val currentUri by viewModel.selectedUri.collectAsState()
-                val isAccessible by viewModel.isAccessible.collectAsState()
-                val videoInfos by viewModel.videoInfos.collectAsState()
-                val isLoading by viewModel.isLoading.collectAsState()
-
+                val navController = rememberNavController()
+                
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    // 💡 修正：videoInfos を画面コンポーザブルへそのまま引き渡す
-                    // （※画面側である DirectoryManagementScreen の引数名も videoInfos への変更が必要です）
-                    DirectoryManagementScreen(
-                        currentUri = currentUri?.toString() ?: "None",
-                        isAccessible = isAccessible,
-                        videoInfos = videoInfos,
-                        isLoading = isLoading,
-                        onChooseClick = { pickDirLauncher.launch(null) }
-                    )
+                    NavHost(navController = navController, startDestination = "management") {
+                        composable("management") {
+                            // ViewModelから各状態（State）をリアルタイムに監視
+                            val currentUri by viewModel.selectedUri.collectAsState()
+                            val isAccessible by viewModel.isAccessible.collectAsState()
+                            val videoInfos by viewModel.videoInfos.collectAsState()
+                            val isLoading by viewModel.isLoading.collectAsState()
+
+                            DirectoryManagementScreen(
+                                currentUri = currentUri?.toString() ?: "None",
+                                isAccessible = isAccessible,
+                                videoInfos = videoInfos,
+                                isLoading = isLoading,
+                                onTopicClick = { topic, sessionVideos ->
+                                    // 1. セッション全体の動画をセット
+                                    movieViewModel.setVideoSession(sessionVideos)
+                                    
+                                    // 2. サムネイルパスとBBoxをセット
+                                    movieViewModel.setSelectedThumbnail(
+                                        path = topic.imagePath,
+                                        bbox = android.graphics.RectF(topic.bboxLeft, topic.bboxTop, topic.bboxRight, topic.bboxBottom)
+                                    )
+
+                                    // 3. タップされたアイテムに関連する絶対時刻（realTime）からシーク位置を計算
+                                    val offsetSec = (topic.realTime - movieViewModel.uiState.value.sessionStartTimeMs) / 1000f
+                                    movieViewModel.onTimeChanged(offsetSec)
+
+                                    navController.navigate("movie_detail") 
+                                },
+                                onChooseClick = { pickDirLauncher.launch(null) }
+                            )
+                        }
+                        composable("movie_detail") {
+                            MovieRoute(viewModel = movieViewModel)
+                        }
+                    }
                 }
             }
         }

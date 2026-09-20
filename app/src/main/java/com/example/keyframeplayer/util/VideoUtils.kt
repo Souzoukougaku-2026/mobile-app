@@ -15,6 +15,8 @@ data class VideoInfo(
     val durationText: String,
     val startTimeText: String,
     val endTimeText: String,
+    val startTimeMs: Long, // 追加
+    val endTimeMs: Long    // 追加
 )
 
 /**
@@ -75,7 +77,9 @@ object VideoUtils {
                 name = file.name ?: "Unknown",
                 durationText = durationText,
                 startTimeText = formatter.format(Date(startTimeMs)),
-                endTimeText = formatter.format(Date(endTimeMs))
+                endTimeText = formatter.format(Date(endTimeMs)),
+                startTimeMs = startTimeMs,
+                endTimeMs = endTimeMs
             )
         }.also {
             retriever.release() // 最後に必ずリソースを解放

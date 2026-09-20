@@ -1,60 +1,46 @@
 package com.example.keyframeplayer.ui.screen
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.keyframeplayer.R
-import com.example.keyframeplayer.data.DataSource
 import com.example.keyframeplayer.model.Topic
+import com.example.keyframeplayer.ui.viewmodel.ListUpViewModel
+import java.io.File
 
 /**
  * 独立したスクリーンコンポーザブル（他の画面やナビゲーションから呼び出し可能）
  */
 @Composable
 fun ListUpScreen(
-    modifier: Modifier = Modifier
+    onTopicClick: (Topic) -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: ListUpViewModel = viewModel()
 ) {
     // -------------------------------------------------------------
     // 【入力および画面の状態管理（State）】
     // -------------------------------------------------------------
-    var topics by remember { mutableStateOf(DataSource.topics) }
+    val dbTopics by viewModel.topics.collectAsState()
+    var displayTopics by remember(dbTopics) { mutableStateOf(dbTopics) }
     var searchText by remember { mutableStateOf("") }
     var searchVisible by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -62,7 +48,7 @@ fun ListUpScreen(
     // 検索入力時の絞り込み・優先度ソート処理
     fun onSearchTextChange(newText: String) {
         searchText = newText
-        topics = DataSource.topics
+        displayTopics = dbTopics
             .filter {
                 it.class_name.contains(searchText, ignoreCase = true)
             }
@@ -84,14 +70,14 @@ fun ListUpScreen(
                     expanded = menuExpanded,
                     onExpandedChange = { menuExpanded = it },
                     onSearchClick = { searchVisible = !searchVisible },
-                    onSortByname = { topics = topics.sortedBy { it.class_name } },
-                    onSortByDate = { topics = topics.sortedBy { it.fileTime } },
-                    onFilterBlack = { topics = DataSource.topics.filter { it.imageColor == R.color.black } },
-                    onFilterWhite = { topics = DataSource.topics.filter { it.imageColor == R.color.white } },
-                    onFilterTime100 = { topics = DataSource.topics.filter { it.fileTime <= 100 } },
-                    onFilterTime1000 = { topics = DataSource.topics.filter { it.fileTime >= 100 } },
-                    onFiltername = { topics = DataSource.topics.filter { it.class_name == "photography" } },
-                    onShowAll = { topics = DataSource.topics }
+                    onSortByname = { displayTopics = displayTopics.sortedBy { it.class_name } },
+                    onSortByDate = { displayTopics = displayTopics.sortedBy { it.fileTime } },
+                    onFilterBlack = { displayTopics = dbTopics.filter { it.imageColor == 3 } }, // 3 is BLACK in BaseColor enum
+                    onFilterWhite = { displayTopics = dbTopics.filter { it.imageColor == 0 } }, // 0 is WHITE
+                    onFilterTime100 = { displayTopics = dbTopics.filter { it.fileTime <= 100000 } },
+                    onFilterTime1000 = { displayTopics = dbTopics.filter { it.fileTime >= 100000 } },
+                    onFiltername = { displayTopics = dbTopics.filter { it.class_name == "photography" } },
+                    onShowAll = { displayTopics = dbTopics }
                 )
 
                 // 検索入力フィールド
@@ -111,7 +97,8 @@ fun ListUpScreen(
             color = MaterialTheme.colorScheme.background
         ) {
             TopicGrid(
-                topics = topics,
+                topics = displayTopics,
+                onTopicClick = onTopicClick,
                 modifier = Modifier.padding(
                     start = 8.dp,
                     top = 8.dp,
@@ -245,7 +232,11 @@ fun MyTopBar(
  * グリッド表示コンポーネント
  */
 @Composable
-fun TopicGrid(topics: List<Topic>, modifier: Modifier = Modifier) {
+fun TopicGrid(
+    topics: List<Topic>,
+    onTopicClick: (Topic) -> Unit,
+    modifier: Modifier = Modifier
+) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -253,7 +244,10 @@ fun TopicGrid(topics: List<Topic>, modifier: Modifier = Modifier) {
         modifier = modifier
     ) {
         items(topics) { topic ->
-            TopicCard(topic)
+            TopicCard(
+                topic = topic,
+                onClick = { onTopicClick(topic) }
+            )
         }
     }
 }
@@ -262,44 +256,86 @@ fun TopicGrid(topics: List<Topic>, modifier: Modifier = Modifier) {
  * 各カード要素コンポーネント
  */
 @Composable
-fun TopicCard(topic: Topic, modifier: Modifier = Modifier) {
-    Card {
+fun TopicCard(
+    topic: Topic,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    Card(
+        modifier = modifier.clickable { onClick() }
+    ) {
         Box {
-            Image(
-                painter = painterResource(id = topic.imageRes),
-                contentDescription = null,
-                modifier = modifier
-                    .size(width = 200.dp, height = 100.dp)
-                    .aspectRatio(2f),
-                contentScale = ContentScale.Crop
-            )
+            if (topic.imagePath != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(File(topic.imagePath))
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .aspectRatio(2f),
+                    contentScale = ContentScale.Crop,
+                    placeholder = painterResource(id = R.drawable.ic_launcher_foreground),
+                    error = painterResource(id = R.drawable.ic_launcher_foreground)
+                )
+            } else {
+                Image(
+                    painter = painterResource(id = topic.imageRes),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(width = 200.dp, height = 100.dp)
+                        .aspectRatio(2f),
+                    contentScale = ContentScale.Crop
+                )
+            }
         }
 
         Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                // クラス名の表示
                 Text(
-                    text = topic.class_name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(
-                        start = 16.dp,  // 16.dp に変更
-                        top = 16.dp,    // 16.dp に変更
-                        end = 16.dp,    // 16.dp に変更
-                        bottom = 8.dp   // 8.dp に変更
-                    )
+                    text = topic.class_name.replaceFirstChar { it.uppercase() },
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
                 )
+                
+                // 認識された色を小さな円で表示
+                val colorHex = when(topic.imageColor) {
+                    0 -> Color.White
+                    3 -> Color.Black
+                    4 -> Color(0xFFFF0000) // RED
+                    else -> Color.Gray
+                }
+                Surface(
+                    modifier = Modifier.size(12.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = colorHex,
+                    border = BorderStroke(1.dp, Color.LightGray)
+                ) {}
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // 【変更箇所】painterResource(R.drawable.ic_grain) の代わりに
-                // Material Design 標準の Icon(imageVector = ...) を使用する
+            
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 16.dp, bottom = 12.dp)
+            ) {
                 Icon(
-                    imageVector = Icons.Default.MoreVert, // または適当な標準アイコン
+                    imageVector = Icons.Default.MoreVert,
                     contentDescription = null,
-                    modifier = Modifier.padding(start = 16.dp) // 16.dp に変更
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.outline
                 )
+                Spacer(modifier = Modifier.width(4.dp))
+                // フォーマットされた時間の表示
                 Text(
-                    text = topic.fileTime.toString(),
+                    text = topic.formattedTime,
                     style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(start = 8.dp) // 8.dp に変更
+                    color = MaterialTheme.colorScheme.outline
                 )
             }
         }

@@ -36,4 +36,22 @@ interface ClopImageDao {
         ORDER BY idKeyFrame ASC
     """)
     fun getClopImageSortedById(keyFrameId: UUID): List<ClopImageEntity>
+
+    @Query("SELECT * FROM clopimages")
+    suspend fun getAllClopImages(): List<ClopImageEntity>
+
+    @Query("""
+        SELECT clopimages.*, keyframes.keyFramePath, keyframes.moviePath, keyframes.fileTime, keyframes.realTime 
+        FROM clopimages 
+        INNER JOIN keyframes ON clopimages.idKeyFrame = keyframes.id
+    """)
+    fun getAllTopicsFlow(): kotlinx.coroutines.flow.Flow<List<com.example.keyframeplayer.data.TopicWithFrame>>
 }
+
+data class TopicWithFrame(
+    @androidx.room.Embedded val clop: ClopImageEntity,
+    val keyFramePath: String,
+    val moviePath: android.net.Uri,
+    val fileTime: Long,
+    val realTime: Long
+)

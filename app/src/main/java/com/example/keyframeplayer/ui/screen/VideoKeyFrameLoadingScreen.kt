@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.keyframeplayer.model.Topic
 import com.example.keyframeplayer.ui.viewmodel.ImageRecognitionViewModel
 import com.example.keyframeplayer.util.VideoInfo
 
@@ -19,6 +20,7 @@ fun VideoKeyFrameLoadingScreen(
     currentUri: String,
     isAccessible: Boolean,
     videoInfos: List<VideoInfo>,
+    onTopicClick: (Topic, List<VideoInfo>) -> Unit, // 修正
     onChooseClick: () -> Unit
 ) {
     // 1. 画面が表示されたタイミング、または videoInfos が準備できたタイミングで自動実行
@@ -37,6 +39,7 @@ fun VideoKeyFrameLoadingScreen(
     if (isCompleted) {
         // 処理完了時は ListUpScreen を描画
         ListUpScreen(
+            onTopicClick = { topic -> onTopicClick(topic, videoInfos) }, // 修正
             modifier = Modifier.fillMaxSize()
         )
     } else {
