@@ -131,7 +131,12 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("movie_detail") {
-                            MovieRoute(viewModel = movieViewModel)
+                            MovieRoute(
+                                viewModel = movieViewModel,
+                                onBack = { 
+                                    navController.navigateUp() // popBackStack の代わりに navigateUp
+                                }
+                            )
                         }
                     }
                 }

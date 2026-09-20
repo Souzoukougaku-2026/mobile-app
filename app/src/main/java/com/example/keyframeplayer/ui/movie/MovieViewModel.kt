@@ -51,9 +51,9 @@ class MovieViewModel(application: Application) : AndroidViewModel(application) {
         }
         
         onVideoSelected(sortedVideos.first().uri)
-        // データ本数が変わるので再取得
-        fetchBarData()
-        fetchDetailedBarData()
+        
+        // セッションが確定したので、その動画群に紐づく物体データを取得
+        fetchKeyframes()
     }
 
     fun setSelectedThumbnail(path: String?, bbox: android.graphics.RectF? = null) {
@@ -64,41 +64,94 @@ class MovieViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun fetchKeyframes() {
+        val state = _uiState.value
+        if (state.selectedVideos.isEmpty()) return
+
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                val clopEntities = clopImageDao.getAllClopImages()
-                val keyframes = clopEntities.mapNotNull { clop ->
-                    val keyFrame = keyFrameDao.getKeyFrameById(clop.idKeyFrame)
-                    keyFrame?.let { kf ->
-                        CropImage(
-                            id = clop.uuid,
-                            className = clop.classname,
-                            score = clop.score.toDouble(),
-                            color = ImageColor.White,
-                            bboxLeft = clop.bboxPoint.ulX.toInt(),
-                            bboxTop = clop.bboxPoint.ulY.toInt(),
-                            bboxRight = clop.bboxPoint.lrX.toInt(),
-                            bboxBottom = clop.bboxPoint.lrY.toInt(),
-                            realTime = kf.realTime,
-                            idKeyFrame = kf.id
-                        )
-                    }
+                // セッションに含まれる全動画のURIを取得
+                val uris = state.selectedVideos.map { it.uri }
+                
+                // JOINクエリを使用して、現在再生中の動画セッションに属する物体データのみを取得
+                val objectData = clopImageDao.getObjectsForVideos(uris)
+                
+                val keyframes = objectData.map { item ->
+                    CropImage(
+                        id = item.clop.uuid,
+                        className = item.clop.classname,
+                        score = item.clop.score.toDouble(),
+                        color = ImageColor.fromId(item.clop.color.ordinal),
+                        bboxLeft = item.clop.bboxPoint.ulX.toInt(),
+                        bboxTop = item.clop.bboxPoint.ulY.toInt(),
+                        bboxRight = item.clop.bboxPoint.lrX.toInt(),
+                        bboxBottom = item.clop.bboxPoint.lrY.toInt(),
+                        realTime = item.realTime,
+                        idKeyFrame = item.clop.idKeyFrame
+                    )
                 }
                 _uiState.update { it.copy(keyframes = keyframes) }
+                
+                // 物体密度に基づいてグラフを再描画
+                fetchBarData()
+                fetchDetailedBarData()
             }
         }
     }
 
     private fun fetchBarData() {
+        val totalSec = _uiState.value.totalDurationSeconds
+        if (totalSec <= 0) return
+        
         val barCount = _uiState.value.totalOverallBarCount
-        val mockData = List(barCount) { kotlin.random.Random.nextFloat() }
-        _uiState.update { it.copy(barValues = mockData) }
+        if (barCount <= 0) return
+
+        val keyframes = getFilteredKeyframes() // フィルタを適用
+        val sessionStart = _uiState.value.sessionStartTimeMs
+        
+        // 各バーの時間枠（秒）
+        val secPerBar = totalSec / barCount
+        val counts = IntArray(barCount) { 0 }
+
+        // 時間枠ごとにカウント
+        keyframes.forEach { kf ->
+            val relativeSec = (kf.realTime - sessionStart) / 1000f
+            val index = (relativeSec / secPerBar).toInt().coerceIn(0, barCount - 1)
+            counts[index]++
+        }
+
+        // 高さに変換 (5個以上でMAX)
+        val maxThreshold = 5f
+        val values = counts.map { (it.toFloat() / maxThreshold).coerceAtMost(1.0f) }
+        
+        _uiState.update { it.copy(barValues = values) }
     }
 
     private fun fetchDetailedBarData() {
+        val totalSec = _uiState.value.totalDurationSeconds
+        if (totalSec <= 0) return
+
         val barCount = _uiState.value.totalDetailedBarCount
-        val mockData = List(barCount) { kotlin.random.Random.nextFloat() }
-        _uiState.update { it.copy(detailedBarValues = mockData) }
+        if (barCount <= 0) return
+
+        val keyframes = getFilteredKeyframes() // フィルタを適用
+        val sessionStart = _uiState.value.sessionStartTimeMs
+        
+        val secPerBar = totalSec / barCount
+        val counts = IntArray(barCount) { 0 }
+
+        keyframes.forEach { kf ->
+            val relativeSec = (kf.realTime - sessionStart) / 1000f
+            val index = (relativeSec / secPerBar).toInt().coerceIn(0, barCount - 1)
+            counts[index]++
+        }
+
+        // 高さに変換 (1個でもあれば目立たせたいので、少し下駄を履かせる)
+        val maxThreshold = 3f
+        val values = counts.map { 
+            if (it > 0) (it.toFloat() / maxThreshold).coerceIn(0.2f, 1.0f) else 0f 
+        }
+        
+        _uiState.update { it.copy(detailedBarValues = values) }
     }
 
     fun onVideoSelected(uri: Uri) {
@@ -188,6 +241,22 @@ class MovieViewModel(application: Application) : AndroidViewModel(application) {
     fun onProgressTapped(progress: Float) {
         val newTime = progress * _uiState.value.totalDurationSeconds
         onTimeChanged(newTime, seekPlayer = true)
+    }
+
+    fun onFilterChanged(className: String?, colorId: Int?) {
+        _uiState.update { it.copy(filterClass = className, filterColor = colorId) }
+        fetchBarData()
+        fetchDetailedBarData()
+    }
+    
+    private fun getFilteredKeyframes(): List<CropImage> {
+        val state = _uiState.value
+        return state.keyframes.filter { kf ->
+            val matchClass = state.filterClass == null || kf.className == state.filterClass
+            // Colorの比較は現状は簡易的に (TODO: ImageColorのマッピング厳密化)
+            val matchColor = state.filterColor == null || kf.color.id == state.filterColor
+            matchClass && matchColor
+        }
     }
 
     fun onOverallScrollChanged(startProgress: Float) {

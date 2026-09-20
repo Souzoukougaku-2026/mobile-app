@@ -11,7 +11,11 @@ data class MovieUiState(
     val videoUri: android.net.Uri? = null,
     val keyframes: List<CropImage> = emptyList(),
     val selectedThumbnailPath: String? = null,
-    val selectedBBox: android.graphics.RectF? = null, // 追加: BBox情報
+    val selectedBBox: android.graphics.RectF? = null,
+    
+    // グラフフィルタ設定
+    val filterClass: String? = null,
+    val filterColor: Int? = null,
 
     val currentTime: Float = 0f,
     // 時間設定

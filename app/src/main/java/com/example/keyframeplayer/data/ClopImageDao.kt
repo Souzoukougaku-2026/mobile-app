@@ -44,6 +44,14 @@ interface ClopImageDao {
         SELECT clopimages.*, keyframes.keyFramePath, keyframes.moviePath, keyframes.fileTime, keyframes.realTime 
         FROM clopimages 
         INNER JOIN keyframes ON clopimages.idKeyFrame = keyframes.id
+        WHERE keyframes.moviePath IN (:movieUris)
+    """)
+    suspend fun getObjectsForVideos(movieUris: List<android.net.Uri>): List<com.example.keyframeplayer.data.TopicWithFrame>
+
+    @Query("""
+        SELECT clopimages.*, keyframes.keyFramePath, keyframes.moviePath, keyframes.fileTime, keyframes.realTime 
+        FROM clopimages 
+        INNER JOIN keyframes ON clopimages.idKeyFrame = keyframes.id
     """)
     fun getAllTopicsFlow(): kotlinx.coroutines.flow.Flow<List<com.example.keyframeplayer.data.TopicWithFrame>>
 }
