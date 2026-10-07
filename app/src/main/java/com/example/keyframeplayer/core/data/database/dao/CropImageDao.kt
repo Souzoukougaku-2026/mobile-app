@@ -29,7 +29,7 @@ interface CropImageDao {
         startTime: Long,
         endTime: Long,
         isAsc: Boolean,
-        limit: Int = 20
+        limit: Int = 500
     ): Flow<List<CropImageEntity>>
 
     @Query("SELECT * FROM CropImage WHERE id = :id")

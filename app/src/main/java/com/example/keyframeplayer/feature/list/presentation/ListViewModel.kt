@@ -17,7 +17,7 @@ class ListViewModel @Inject constructor(
 
     private val _selectedClass = MutableStateFlow<String?>(null)
     private val _selectedColor = MutableStateFlow<Int?>(null)
-    private val _timeRange = MutableStateFlow(0L to System.currentTimeMillis() + 86400000)
+    private val _timeRange = MutableStateFlow(0L to Long.MAX_VALUE)
     private val _isAscending = MutableStateFlow(false)
 
     @OptIn(ExperimentalCoroutinesApi::class)
