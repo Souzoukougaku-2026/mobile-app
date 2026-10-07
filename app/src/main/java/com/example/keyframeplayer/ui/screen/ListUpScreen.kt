@@ -5,18 +5,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -25,6 +27,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -33,6 +36,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,9 +47,11 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
+import kotlin.math.ceil
 
 /**
  * 独立したスクリーンコンポーザブル（CropImageDBから取得したデータの表示）
+ * 最大10件ずつのNext/Prevページネーション表示対応
  */
 @Composable
 fun ListUpScreen(
@@ -54,6 +60,8 @@ fun ListUpScreen(
     onNavigateToDetail: (CropImage) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val itemsPerPage = 10
+
     // -------------------------------------------------------------
     // 【入力および画面の状態管理（State）】
     // -------------------------------------------------------------
@@ -61,6 +69,7 @@ fun ListUpScreen(
     var searchText by remember { mutableStateOf("") }
     var searchVisible by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var currentPage by remember { mutableIntStateOf(0) }
 
     fun applySearch(text: String, currentItems: List<CropImage>): List<CropImage> {
         if (text.isBlank()) return currentItems
@@ -80,10 +89,20 @@ fun ListUpScreen(
     fun onSearchTextChange(newText: String) {
         searchText = newText
         topics = applySearch(newText, items)
+        currentPage = 0
     }
 
     LaunchedEffect(items) {
         topics = applySearch(searchText, items)
+        currentPage = 0
+    }
+
+    val totalPages = remember(topics) {
+        maxOf(1, ceil(topics.size / itemsPerPage.toDouble()).toInt())
+    }
+
+    val pagedTopics = remember(topics, currentPage) {
+        topics.drop(currentPage * itemsPerPage).take(itemsPerPage)
     }
 
     Scaffold(
@@ -94,14 +113,38 @@ fun ListUpScreen(
                     expanded = menuExpanded,
                     onExpandedChange = { menuExpanded = it },
                     onSearchClick = { searchVisible = !searchVisible },
-                    onSortByname = { topics = topics.sortedBy { it.className } },
-                    onSortByDate = { topics = topics.sortedBy { it.fileTime } },
-                    onFilterBlack = { topics = items.filter { it.color == ImageColor.Black } },
-                    onFilterWhite = { topics = items.filter { it.color == ImageColor.White } },
-                    onFilterTime100 = { topics = items.filter { it.fileTime <= 100 } },
-                    onFilterTime1000 = { topics = items.filter { it.fileTime >= 100 } },
-                    onFiltername = { topics = items.filter { it.className.lowercase() == "photography" } },
-                    onShowAll = { topics = items }
+                    onSortByname = {
+                        topics = topics.sortedBy { it.className }
+                        currentPage = 0
+                    },
+                    onSortByDate = {
+                        topics = topics.sortedBy { it.fileTime }
+                        currentPage = 0
+                    },
+                    onFilterBlack = {
+                        topics = items.filter { it.color == ImageColor.Black }
+                        currentPage = 0
+                    },
+                    onFilterWhite = {
+                        topics = items.filter { it.color == ImageColor.White }
+                        currentPage = 0
+                    },
+                    onFilterTime100 = {
+                        topics = items.filter { it.fileTime <= 100 }
+                        currentPage = 0
+                    },
+                    onFilterTime1000 = {
+                        topics = items.filter { it.fileTime >= 100 }
+                        currentPage = 0
+                    },
+                    onFiltername = {
+                        topics = items.filter { it.className.lowercase() == "photography" }
+                        currentPage = 0
+                    },
+                    onShowAll = {
+                        topics = items
+                        currentPage = 0
+                    }
                 )
 
                 // 検索入力フィールド
@@ -111,6 +154,17 @@ fun ListUpScreen(
                         onValueChange = { onSearchTextChange(it) }
                     )
                 }
+            }
+        },
+        bottomBar = {
+            if (topics.isNotEmpty()) {
+                PaginationBar(
+                    currentPage = currentPage,
+                    totalPages = totalPages,
+                    totalItems = topics.size,
+                    onPrevClick = { if (currentPage > 0) currentPage-- },
+                    onNextClick = { if (currentPage < totalPages - 1) currentPage++ }
+                )
             }
         }
     ) { padding ->
@@ -133,7 +187,7 @@ fun ListUpScreen(
                 }
             } else {
                 TopicGrid(
-                    topics = topics,
+                    topics = pagedTopics,
                     onNavigateToDetail = onNavigateToDetail,
                     modifier = Modifier.padding(
                         start = 8.dp,
@@ -141,6 +195,56 @@ fun ListUpScreen(
                         end = 8.dp,
                     )
                 )
+            }
+        }
+    }
+}
+
+/**
+ * ページネーション用コントロールバー（Prev / Next ボタン）
+ */
+@Composable
+fun PaginationBar(
+    currentPage: Int,
+    totalPages: Int,
+    totalItems: Int,
+    onPrevClick: () -> Unit,
+    onNextClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        tonalElevation = 3.dp,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            OutlinedButton(
+                onClick = onPrevClick,
+                enabled = currentPage > 0
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "前へ")
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("前へ")
+            }
+
+            Text(
+                text = "${currentPage + 1} / $totalPages (全 ${totalItems}件)",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Button(
+                onClick = onNextClick,
+                enabled = currentPage < totalPages - 1
+            ) {
+                Text("Next")
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "次へ")
             }
         }
     }
