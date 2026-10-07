@@ -82,6 +82,17 @@ dependencies {
     // ViewModel
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
+    // ML & WorkManager
+    implementation(libs.litert)
+    implementation(libs.litert.gpu.api)
+    implementation(libs.litert.metadata)
+    implementation(libs.litert.support.api)
+    implementation(libs.androidx.palette)
+    implementation(libs.androidx.work.runtime.ktx)
+
+    // Coil
+    implementation("io.coil-kt:coil-compose:2.6.0")
+
     // --- テスト関連 ---
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -91,5 +102,4 @@ dependencies {
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    implementation("io.coil-kt:coil-compose:2.6.0")
 }
