@@ -1,17 +1,25 @@
 package com.example.keyframeplayer.ui.viewmodel
 
+import android.content.Context
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import androidx.lifecycle.viewModelScope
 import com.example.keyframeplayer.util.VideoInfo
 import com.example.keyframeplayer.util.VideoUtils
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import com.example.keyframeplayer.core.data.database.dao.CropImageDao
+import dagger.hilt.android.internal.Contexts.getApplication
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-class VideoManagementViewModel(application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class VideoManagementViewModel @Inject constructor(private val cropImageDao: CropImageDao, @ApplicationContext private val context: Context) : ViewModel(){//(application: Application) : AndroidViewModel(application) {
 
     private val _selectedUri = MutableStateFlow<Uri?>(null)
     val selectedUri: StateFlow<Uri?> = _selectedUri
@@ -46,7 +54,7 @@ class VideoManagementViewModel(application: Application) : AndroidViewModel(appl
         }
 
         if (uri != null) {
-            val context = getApplication<Application>().applicationContext
+            //val context = getApplication<Application>().applicationContext
 
             try {
                 // 権限チェック

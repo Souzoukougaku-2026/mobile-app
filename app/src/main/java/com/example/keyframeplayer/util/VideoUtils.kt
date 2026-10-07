@@ -7,6 +7,7 @@ import androidx.documentfile.provider.DocumentFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.provider.DocumentsContract
 
 // 画面やロジックで扱うための共通データ構造
 data class VideoInfo(
@@ -26,8 +27,21 @@ object VideoUtils {
      * 💡 【ViewModelから移行】指定されたフォルダUriの読み込み権限があるか確認します。
      */
     fun checkAccess(context: Context, uri: Uri?): Boolean {
-        val directory = uri?.let { DocumentFile.fromTreeUri(context, it) }
-        return directory?.canRead() == true
+        /*val directory = uri?.let { DocumentFile.fromTreeUri(context, it) }
+        return directory?.canRead() == true*/
+        if (uri == null) return false
+        return try {
+            // Tree URI（フォルダ）形式であることを確認してからアクセスを試みる
+            if (DocumentsContract.isTreeUri(uri)) {
+                val directory = DocumentFile.fromTreeUri(context, uri)
+                directory?.canRead() == true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            // 万が一不正なURIで例外が発生してもアプリを落とさない
+            false
+        }
     }
 
     /**

@@ -1,5 +1,18 @@
 package com.example.keyframeplayer.ui.screen
 
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage // 💡 抽出画像を表示するために追加
+import com.example.keyframeplayer.core.domain.model.CropImage
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,21 +53,21 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.example.keyframeplayer.R
-import com.example.keyframeplayer.data.DataSource
-import com.example.keyframeplayer.model.Topic
 
 /**
  * 独立したスクリーンコンポーザブル（他の画面やナビゲーションから呼び出し可能）
  */
 @Composable
 fun ListUpScreen(
+    items: List<CropImage>, // 型を CropImage に変更
+    onSortByDate: (Boolean) -> Unit,
+    onNavigateToDetail: (CropImage) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // -------------------------------------------------------------
     // 【入力および画面の状態管理（State）】
     // -------------------------------------------------------------
-    var topics by remember { mutableStateOf(DataSource.topics) }
+    var topics by remember { mutableStateOf(items) }
     var searchText by remember { mutableStateOf("") }
     var searchVisible by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -62,15 +75,15 @@ fun ListUpScreen(
     // 検索入力時の絞り込み・優先度ソート処理
     fun onSearchTextChange(newText: String) {
         searchText = newText
-        topics = DataSource.topics
+        topics = items
             .filter {
-                it.class_name.contains(searchText, ignoreCase = true)
+                it.className.contains(searchText, ignoreCase = true)
             }
             .sortedByDescending {
                 when {
-                    it.class_name.equals(searchText, true) -> 100
-                    it.class_name.startsWith(searchText, true) -> 80
-                    it.class_name.contains(searchText, true) -> 60
+                    it.className.equals(searchText, true) -> 100
+                    it.className.startsWith(searchText, true) -> 80
+                    it.className.contains(searchText, true) -> 60
                     else -> 0
                 }
             }
@@ -84,14 +97,14 @@ fun ListUpScreen(
                     expanded = menuExpanded,
                     onExpandedChange = { menuExpanded = it },
                     onSearchClick = { searchVisible = !searchVisible },
-                    onSortByname = { topics = topics.sortedBy { it.class_name } },
+                    onSortByname = { topics = topics.sortedBy { it.className } },
                     onSortByDate = { topics = topics.sortedBy { it.fileTime } },
-                    onFilterBlack = { topics = DataSource.topics.filter { it.imageColor == R.color.black } },
-                    onFilterWhite = { topics = DataSource.topics.filter { it.imageColor == R.color.white } },
-                    onFilterTime100 = { topics = DataSource.topics.filter { it.fileTime <= 100 } },
-                    onFilterTime1000 = { topics = DataSource.topics.filter { it.fileTime >= 100 } },
-                    onFiltername = { topics = DataSource.topics.filter { it.class_name == "photography" } },
-                    onShowAll = { topics = DataSource.topics }
+                    onFilterBlack = { topics = items.filter { it.color.name.lowercase() == "black" } },
+                    onFilterWhite = { topics = items.filter { it.color.name.lowercase() == "white" } },
+                    onFilterTime100 = { topics = items.filter { it.fileTime <= 100 } },
+                    onFilterTime1000 = { topics = items.filter { it.fileTime >= 100 } },
+                    onFiltername = { topics = items.filter { it.className == "photography" } },
+                    onShowAll = { topics = items }
                 )
 
                 // 検索入力フィールド
@@ -112,6 +125,7 @@ fun ListUpScreen(
         ) {
             TopicGrid(
                 topics = topics,
+                onNavigateToDetail = onNavigateToDetail,
                 modifier = Modifier.padding(
                     start = 8.dp,
                     top = 8.dp,
@@ -245,7 +259,7 @@ fun MyTopBar(
  * グリッド表示コンポーネント
  */
 @Composable
-fun TopicGrid(topics: List<Topic>, modifier: Modifier = Modifier) {
+fun TopicGrid(topics: List<CropImage>, onNavigateToDetail: (CropImage) -> Unit, modifier: Modifier = Modifier) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -253,7 +267,7 @@ fun TopicGrid(topics: List<Topic>, modifier: Modifier = Modifier) {
         modifier = modifier
     ) {
         items(topics) { topic ->
-            TopicCard(topic)
+            TopicCard(topic, onClick = { onNavigateToDetail(topic) })
         }
     }
 }
@@ -262,13 +276,14 @@ fun TopicGrid(topics: List<Topic>, modifier: Modifier = Modifier) {
  * 各カード要素コンポーネント
  */
 @Composable
-fun TopicCard(topic: Topic, modifier: Modifier = Modifier) {
-    Card {
+fun TopicCard(topic: CropImage,onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(onClick = onClick) {
         Box {
-            Image(
-                painter = painterResource(id = topic.imageRes),
+            AsyncImage(
+                //painter = painterResource(id = topic.keyFramePath),
+                model = topic.keyFramePath,
                 contentDescription = null,
-                modifier = modifier
+                modifier = Modifier
                     .size(width = 200.dp, height = 100.dp)
                     .aspectRatio(2f),
                 contentScale = ContentScale.Crop
@@ -278,7 +293,7 @@ fun TopicCard(topic: Topic, modifier: Modifier = Modifier) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = topic.class_name,
+                    text = topic.className,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(
                         start = 16.dp,  // 16.dp に変更
