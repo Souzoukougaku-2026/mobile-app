@@ -45,6 +45,7 @@ android {
 }
 
 dependencies {
+
     // --- 共通・Compose基本 (libs経由) ---
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.core.ktx)

@@ -8,6 +8,31 @@
     <string name="next">Next</string>
     <string name="previous">Previous</string>
 
+    <string name="architecture" />
+    <string name="automotive" />
+    <string name="biology" />
+    <string name="crafts" />
+    <string name="business" />
+    <string name="culinary" />
+    <string name="design" />
+    <string name="ecology" />
+    <string name="engineering" />
+    <string name="fashion" />
+    <string name="finance" />
+    <string name="film" />
+    <string name="gaming" />
+    <string name="geology" />
+    <string name="drawing" />
+    <string name="history" />
+    <string name="journalism" />
+    <string name="law" />
+    <string name="lifestyle" />
+    <string name="music" />
+    <string name="photography" />
+    <string name="physics" />
+    <string name="tech" />
+    <string name="painting" />
+
     <string name="lorem_ipsum">
         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam in scelerisque sem. Mauris
         volutpat, dolor id interdum ullamcorper, risus dolor egestas lectus, sit amet mattis purus
