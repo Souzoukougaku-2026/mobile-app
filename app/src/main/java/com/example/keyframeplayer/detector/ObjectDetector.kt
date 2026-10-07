@@ -11,7 +11,6 @@ import androidx.core.graphics.createBitmap
 import com.example.keyframeplayer.data.Config
 import com.example.keyframeplayer.data.Detection
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.support.common.FileUtil
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -48,22 +47,9 @@ class ObjectDetector(private val context: Context) {
             val model = FileUtil.loadMappedFile(context, Config.MODEL_PATH)
 
             val options = Interpreter.Options().apply {
-                try {
-                    val delegateOptions = GpuDelegate.Options().apply {
-                        isPrecisionLossAllowed = true
-                        setSerializationParams(
-                            context.codeCacheDir.absolutePath,
-                            "yolo_v1"
-                        )
-                        setInferencePreference(GpuDelegate.Options.INFERENCE_PREFERENCE_SUSTAINED_SPEED)
-                    }
-                    this.addDelegate(GpuDelegate(delegateOptions))
-                    Log.d("LiteRT", "GPU Delegation is valid on this device")
-                } catch (e: Exception) {
-                    this.setNumThreads(4)
-                    useXNNPACK = true
-                    Log.e("LiteRT", "Failed to initialize GPU Delegate, CPU activate", e)
-                }
+                this.setNumThreads(4)
+                useXNNPACK = true
+                Log.d("LiteRT", "CPU with XNNPACK initialized")
             }
 
             interpreter = Interpreter(model, options)
