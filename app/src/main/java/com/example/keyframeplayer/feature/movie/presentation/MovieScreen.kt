@@ -439,3 +439,23 @@ fun VideoPlayerContainer(
         }
     }
 }
+
+@Composable
+fun OverallTimeTicks(totalSeconds: Float) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        val tickCount = 4
+        for (i in 0..tickCount) {
+            val label = "${(i * (totalSeconds / 3600 / 4)).toInt()}h"
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.Gray
+            )
+        }
+    }
+}
