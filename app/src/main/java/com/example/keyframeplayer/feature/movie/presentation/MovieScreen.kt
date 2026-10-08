@@ -1,144 +1,172 @@
 package com.example.keyframeplayer.feature.movie.presentation
 
+import android.net.Uri
+import android.view.View
+import android.widget.PopupMenu
 import androidx.annotation.OptIn
-import androidx.compose.foundation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.util.UnstableApi
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.flow.distinctUntilChanged
-import com.example.keyframeplayer.feature.movie.presentation.components.*
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.DefaultTimeBar
+import androidx.media3.ui.PlayerView
 import com.example.keyframeplayer.core.domain.model.CropImage
+import com.example.keyframeplayer.feature.movie.presentation.components.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable
 fun MovieRoute(
     viewModel: MovieViewModel,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    
+
     MovieScreen(
         uiState = uiState,
         onTimeChanged = viewModel::onTimeChanged,
         onProgressTapped = viewModel::onProgressTapped,
         onVisibleRangeChanged = viewModel::onVisibleRangeChanged,
+        onPlayerPositionUpdated = viewModel::onPlayerPositionUpdated
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class, UnstableApi::class) // ← UnstableApi::class を追加
+@OptIn(UnstableApi::class)
 @Composable
 fun MovieScreen(
     uiState: MovieUiState,
     onTimeChanged: (Float) -> Unit,
     onProgressTapped: (Float) -> Unit,
     onVisibleRangeChanged: (Float) -> Unit,
+    onPlayerPositionUpdated: (Int, Long) -> Unit
 ) {
+    val context = LocalContext.current
     val scrollState = rememberScrollState()
-    // フルスクリーン状態の管理
     var isFullScreen by remember { mutableStateOf(false) }
 
-    // ユーザーが手動でスクロールしていない時だけ動作する
+    // 単一の ExoPlayer インスタンスを作成し、画面のライフサイクルで管理
+    val exoPlayer = remember(context) {
+        ExoPlayer.Builder(context).build().apply {
+            repeatMode = Player.REPEAT_MODE_OFF
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        onDispose { exoPlayer.release() }
+    }
+
+    // 動画リスト (MediaItems) のセットアップ
+    LaunchedEffect(uiState.videos) {
+        if (uiState.videos.isNotEmpty()) {
+            val mediaItems = uiState.videos.map { video ->
+                MediaItem.fromUri(Uri.parse(video.uri))
+            }
+            exoPlayer.setMediaItems(mediaItems)
+            exoPlayer.prepare()
+            if (uiState.initialMediaItemIndex in uiState.videos.indices) {
+                exoPlayer.seekTo(uiState.initialMediaItemIndex, uiState.initialPositionMs)
+            }
+            exoPlayer.playWhenReady = true
+        } else if (uiState.videoUri != null && uiState.videoUri != Uri.EMPTY) {
+            exoPlayer.setMediaItem(MediaItem.fromUri(uiState.videoUri))
+            exoPlayer.prepare()
+            exoPlayer.playWhenReady = true
+        }
+    }
+
+    // ViewModelからのシーク指示のハンドリング
+    LaunchedEffect(uiState.seekTarget) {
+        val target = uiState.seekTarget ?: return@LaunchedEffect
+        if (target.mediaItemIndex in 0 until exoPlayer.mediaItemCount) {
+            exoPlayer.seekTo(target.mediaItemIndex, target.positionMs)
+        }
+    }
+
+    // プレイヤーの再生位置を ViewModel へ定期的に同期
+    LaunchedEffect(exoPlayer) {
+        while (true) {
+            if (exoPlayer.isPlaying) {
+                val idx = exoPlayer.currentMediaItemIndex
+                val posMs = exoPlayer.currentPosition
+                onPlayerPositionUpdated(idx, posMs)
+            }
+            delay(200)
+        }
+    }
+
+    // 自動スクロール同期
     LaunchedEffect(uiState.currentTime) {
         if (!scrollState.isScrollInProgress) {
             val totalWidthPx = scrollState.maxValue + scrollState.viewportSize
-            if (totalWidthPx > 0) {
-                // 現在の時間が画面中央にくるようなスクロール位置を計算
+            if (totalWidthPx > 0 && uiState.totalDurationSeconds > 0) {
                 val progress = uiState.currentTime / uiState.totalDurationSeconds
                 val targetScroll = (progress * totalWidthPx) - (scrollState.viewportSize / 2f)
-
-                // 滑らかにスクロール（animateScrollTo）
                 scrollState.scrollTo(targetScroll.toInt().coerceIn(0, scrollState.maxValue))
             }
         }
     }
 
-    // PagerState: キーフレーム（検出物体）ごとにページを分ける設定
-    // initialPage は現在の再生時間に最も近いキーフレームに設定
-    val pagerState = rememberPagerState(
-        initialPage = remember(uiState.keyframes) {
-            val index = uiState.keyframes.indexOfFirst { it.realTime.toFloat() / 1000f >= uiState.currentTime }
-            if (index != -1) index else 0
-        },
-        pageCount = { uiState.keyframes.size }
-    )
-
-    val activeKeyframe = uiState.keyframes.getOrNull(pagerState.currentPage)
-
-    
-    // スクロール位置の監視を最適化 (ANR対策)
+    // スクロール位置の監視 (ANR対策)
     LaunchedEffect(scrollState) {
-        snapshotFlow { 
+        snapshotFlow {
             val totalContentWidth = scrollState.maxValue + scrollState.viewportSize
             if (totalContentWidth > 0) scrollState.value.toFloat() / totalContentWidth else 0f
         }
         .distinctUntilChanged { old: Float, new: Float ->
-            // 変化が非常に小さい場合は無視して再描画を抑える (0.1% 未満の変化は無視)
-            kotlin.math.abs(old - new) < 0.001f 
+            kotlin.math.abs(old - new) < 0.001f
         }
         .collect { progress ->
             onVisibleRangeChanged(progress)
-
             if (scrollState.isScrollInProgress) {
                 onTimeChanged(progress * uiState.totalDurationSeconds)
             }
         }
     }
 
-    Column(modifier = Modifier
-        .fillMaxSize()
-        .background(if (isFullScreen) Color.Black else MaterialTheme.colorScheme.background)
+    // 現在時刻に最も近いアクティブキーフレームの検索
+    val activeKeyframe = remember(uiState.keyframes, uiState.currentRealTimeMs) {
+        if (uiState.keyframes.isEmpty()) null
+        else {
+            uiState.keyframes.minByOrNull { kotlin.math.abs(it.realTime - uiState.currentRealTimeMs) }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isFullScreen) Color.Black else MaterialTheme.colorScheme.background)
     ) {
         // --- ビデオ表示エリア ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(
-                    // フルスクリーン時は画面全体(weight 1)、通常時は16:9の比率にする
                     if (isFullScreen) Modifier.weight(1f) else Modifier.aspectRatio(16f / 9f)
                 )
         ) {
-            if (uiState.keyframes.isEmpty()) {
-                // まだ解析データがない時は、空のプレイヤーを1つだけ表示
-                VideoPlayerItem(
-                    uri = uiState.videoUri ?: android.net.Uri.EMPTY,
-                    timeUs = 0L,
-                    isActive = true,
-                    isFullScreen = isFullScreen,
-                    onToggleFullScreen = { isFullScreen = !isFullScreen },
-                    keyframes = emptyList(),
-                    onTimeChanged = onTimeChanged
-                )
-            } else {
-                // キーフレームごとにプレイヤーを切り替える Pager
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                ) { page ->
-                    VideoPlayerItem(
-                        uri = uiState.videoUri ?: android.net.Uri.EMPTY,
-                        timeUs = uiState.keyframes[page].realTime * 1000L,
-                        isActive = (pagerState.currentPage == page),
-                        isFullScreen = isFullScreen,
-                        onToggleFullScreen = { isFullScreen = !isFullScreen },
-                        keyframes = uiState.keyframes,
-                        onTimeChanged = onTimeChanged
-                    )
-                }
-            }
+            VideoPlayerContainer(
+                exoPlayer = exoPlayer,
+                isFullScreen = isFullScreen,
+                onToggleFullScreen = { isFullScreen = !isFullScreen },
+                keyframes = uiState.keyframes
+            )
         }
 
         if (!isFullScreen) {
@@ -189,8 +217,9 @@ fun MovieScreen(
                 }
 
                 TimeLabel(
-                    uiState.currentTime,
-                    uiState.totalDurationSeconds,
+                    currentTime = uiState.currentTime,
+                    totalDuration = uiState.totalDurationSeconds,
+                    realTimeMs = uiState.currentRealTimeMs,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
 
@@ -198,74 +227,38 @@ fun MovieScreen(
 
                 BottomInfoArea(
                     currentTime = uiState.currentTime,
-                    activeKeyframe = activeKeyframe
-                /*uiState.currentTime*/)
+                    activeKeyframe = activeKeyframe,
+                    realTimeMs = uiState.currentRealTimeMs
+                )
             }
         }
     }
 }
 
 /**
- * 個別ビデオプレイヤー項目
+ * 連続ストリーミング用 PlayerView コンテナ
  */
-@androidx.media3.common.util.UnstableApi
+@OptIn(UnstableApi::class)
 @Composable
-fun VideoPlayerItem(
-    uri: android.net.Uri,
-    timeUs: Long,
-    isActive: Boolean,
+fun VideoPlayerContainer(
+    exoPlayer: ExoPlayer,
     isFullScreen: Boolean,
     onToggleFullScreen: () -> Unit,
-    keyframes: List<CropImage>,
-    onTimeChanged: (Float) -> Unit // ViewModel への時間通知用に追加
+    keyframes: List<CropImage>
 ) {
-    val context = LocalContext.current
     var isControllerVisible by remember { mutableStateOf(false) }
-    val exoPlayer = remember {
-        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
-        }
-    }
-
-    // 動画の準備とシーク
-    LaunchedEffect(uri, timeUs) {
-        if (uri == android.net.Uri.EMPTY) return@LaunchedEffect // 💡 URIがない時は何もしない
-        val mediaItem = androidx.media3.common.MediaItem.fromUri(uri)
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
-        exoPlayer.seekTo(timeUs / 1000L)
-        exoPlayer.playWhenReady = isActive
-    }
-
-    // プレイヤーの再生位置を ViewModel (グラフ) に同期させる
-    LaunchedEffect(isActive, exoPlayer) {
-        if (isActive) {
-            while (true) {
-                if (exoPlayer.isPlaying) {
-                    onTimeChanged(exoPlayer.currentPosition / 1000f)
-                }
-                kotlinx.coroutines.delay(200) // 200ms間隔で更新
-            }
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { exoPlayer.release() }
-    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                androidx.media3.ui.PlayerView(ctx).apply {
+                PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = true
-                    // シークバーのマーカー表示ロジック
-                    setControllerVisibilityListener(androidx.media3.ui.PlayerView.ControllerVisibilityListener { visibility ->
-                        isControllerVisible = (visibility == android.view.View.VISIBLE)
-                        if (visibility == android.view.View.VISIBLE) {
-                            val timeBar =
-                                findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)
+                    setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
+                        isControllerVisible = (visibility == View.VISIBLE)
+                        if (visibility == View.VISIBLE) {
+                            val timeBar = findViewById<DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)
                             if (timeBar != null) {
                                 val markerTimes = keyframes.map { it.realTime }.toLongArray()
                                 timeBar.setAdGroupTimesMs(
@@ -275,21 +268,18 @@ fun VideoPlayerItem(
                                 )
                                 timeBar.setAdMarkerColor(android.graphics.Color.RED)
                             }
-                            val fullScreenButton = findViewById<android.view.View>(androidx.media3.ui.R.id.exo_fullscreen)
+                            val fullScreenButton = findViewById<View>(androidx.media3.ui.R.id.exo_fullscreen)
                             fullScreenButton?.setOnClickListener {
-                                onToggleFullScreen() // 💡 ここでComposeの全画面切り替えを呼ぶ
+                                onToggleFullScreen()
                             }
-                            // --- 2. 💡 追加：歯車ボタンの挙動をカスタマイズ ---
-                            val settingsButton =
-                                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)
+                            val settingsButton = findViewById<View>(androidx.media3.ui.R.id.exo_settings)
                             settingsButton?.setOnClickListener { view ->
-                                val popup = android.widget.PopupMenu(ctx, view)
+                                val popup = PopupMenu(ctx, view)
                                 val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
 
                                 speeds.forEach { speed ->
                                     popup.menu.add("${speed}x").setOnMenuItemClickListener {
-                                        exoPlayer.playbackParameters =
-                                            androidx.media3.common.PlaybackParameters(speed)
+                                        exoPlayer.playbackParameters = PlaybackParameters(speed)
                                         true
                                     }
                                 }

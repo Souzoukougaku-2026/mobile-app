@@ -16,9 +16,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.keyframeplayer.feature.list.presentation.ListViewModel
@@ -175,11 +177,24 @@ fun AppNavigation(
                 items = uiState.items,
                 onSortByDate = { isAsc -> listViewModel.setSortOrder(isAsc) },
                 onNavigateToDetail = { image ->
-                    navController.navigate("movie")
-                } // ここを修正しました
+                    navController.navigate("movie?cropImageId=${image.id}&realTime=${image.realTime}")
+                }
             )
         }
-        composable("movie") {
+        composable(
+            route = "movie?cropImageId={cropImageId}&realTime={realTime}",
+            arguments = listOf(
+                navArgument("cropImageId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("realTime") {
+                    type = NavType.LongType
+                    defaultValue = -1L
+                }
+            )
+        ) {
             val movieViewModel: MovieViewModel = hiltViewModel()
             MovieRoute(viewModel = movieViewModel)
         }

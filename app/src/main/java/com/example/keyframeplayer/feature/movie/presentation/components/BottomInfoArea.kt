@@ -10,11 +10,15 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.domain.model.CropImage
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun BottomInfoArea(
     currentTime: Float,
-    activeKeyframe: CropImage? = null
+    activeKeyframe: CropImage? = null,
+    realTimeMs: Long = 0L
 ) {
     Row(
         modifier = Modifier
@@ -36,7 +40,6 @@ fun BottomInfoArea(
             } else {
                 ZoomableImage(
                     painter = painterResource(id = R.drawable.ic_launcher_background),
-                    //'ic_launcher_background'は後ほど適切な画像を表示予定
                     initialTopLeft = Offset(50f, 80f),
                     initialBottomRight = Offset(80f, 50f)
                 )
@@ -49,14 +52,19 @@ fun BottomInfoArea(
             modifier = Modifier
                 .weight(0.8f)
         ) {
-            val tableData = remember(currentTime, activeKeyframe) {
+            val tableData = remember(currentTime, activeKeyframe, realTimeMs) {
+                val realTimeStr = if (realTimeMs > 0L) {
+                    SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(realTimeMs))
+                } else {
+                    "%02d:%02d".format((currentTime/3600).toInt(), ((currentTime%3600)/60).toInt())
+                }
+
                 buildList {
-                    add("Timestamp" to "%02d:%02d".format((currentTime/3600).toInt(), ((currentTime%3600)/60).toInt()))
-                    add("Velocity" to "12.5 m/s")
-                    add("Altitude" to "450 m")
-                    add("Status" to "Normal")
+                    add("Timestamp" to realTimeStr)
                     add("Class" to (activeKeyframe?.className ?: "-"))
                     add("Score" to (activeKeyframe?.score?.let { "%.2f".format(it) } ?: "-"))
+                    add("Color" to (activeKeyframe?.color?.name ?: "-"))
+                    add("Status" to "Normal")
                 }
             }
             VerticalTable(

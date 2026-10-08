@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.example.keyframeplayer.core.data.database.AppDatabase
 import com.example.keyframeplayer.core.data.database.dao.CropImageDao
 import com.example.keyframeplayer.core.data.database.dao.KeyFrameDao
+import com.example.keyframeplayer.core.data.database.dao.VideoDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -36,5 +37,10 @@ object DatabaseModule {
     @Provides
     fun provideKeyFrameDao(database: AppDatabase): KeyFrameDao {
         return database.keyFrameDao()
+    }
+
+    @Provides
+    fun provideVideoDao(database: AppDatabase): VideoDao {
+        return database.videoDao()
     }
 }

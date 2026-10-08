@@ -14,4 +14,7 @@ interface KeyFrameDao {
 
     @Query("SELECT * FROM KeyFrame WHERE id = :id")
     suspend fun getKeyFrameById(id: UUID): KeyFrameEntity?
+
+    @Query("SELECT * FROM KeyFrame ORDER BY realTime ASC")
+    suspend fun getAllKeyFrames(): List<KeyFrameEntity>
 }

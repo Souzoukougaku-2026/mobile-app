@@ -12,16 +12,11 @@ import com.example.keyframeplayer.util.KeyFrameUtils.saveBitmapToInternalStorage
 //import com.example.keyframeplayer.data.ClopImageDao
 import com.example.keyframeplayer.core.data.database.dao.CropImageDao
 import com.example.keyframeplayer.core.data.database.dao.KeyFrameDao
+import com.example.keyframeplayer.core.data.database.dao.VideoDao
 import com.example.keyframeplayer.core.data.database.entity.CropImageEntity
 import com.example.keyframeplayer.core.data.database.entity.KeyFrameEntity
+import com.example.keyframeplayer.core.data.database.entity.VideoEntity
 import com.example.keyframeplayer.core.domain.model.ImageColor
-import com.example.keyframeplayer.util.KeyFrameUtils.addMicrosecondsToLong
-import com.example.keyframeplayer.util.KeyFrameUtils.extractKeyframes
-import com.example.keyframeplayer.util.KeyFrameUtils.saveBitmapToInternalStorage
-//import com.example.keyframeplayer.data.ClopImageEntity
-//import com.example.keyframeplayer.data.BaseColor
-//import com.example.keyframeplayer.data.BPoint
-//import com.example.keyframeplayer.data.KeyFrameEntity
 import com.example.keyframeplayer.util.VideoInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -31,6 +26,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 
@@ -38,8 +35,9 @@ import javax.inject.Inject
 class ImageRecognitionViewModel @Inject constructor(
     private val keyFrameDao: KeyFrameDao,
     private val cropImageDao: CropImageDao,
+    private val videoDao: VideoDao,
     @ApplicationContext private val context: Context
-) /*: AndroidViewModel(application)*/ : ViewModel() {
+) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
@@ -52,14 +50,32 @@ class ImageRecognitionViewModel @Inject constructor(
             _isLoading.value = true
             _progress.value = 0f
 
-            //val context = getApplication<Application>().applicationContext
-
             try {
                 withContext(Dispatchers.IO) {
-                    //val database = AppDatabase.getDatabase(context)
-                    //val keyFrameDao = database.keyFrameDao()
-                    // 1. 既存のデータベースからクロップ用のDaoを取得
-                    //val clopImageDao = database.clopImageDao()
+                    val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
+
+                    // --- フェーズ 0: 動画情報を時系列順にDB保存 ---
+                    val videoEntities = videoInfos.map { video ->
+                        val startTimeMs = try {
+                            dateFormat.parse(video.startTimeText)?.time ?: 0L
+                        } catch (e: Exception) {
+                            0L
+                        }
+                        val endTimeMs = try {
+                            dateFormat.parse(video.endTimeText)?.time ?: 0L
+                        } catch (e: Exception) {
+                            0L
+                        }
+                        VideoEntity(
+                            uri = video.uri.toString(),
+                            name = video.name,
+                            realStartTime = startTimeMs,
+                            realEndTime = endTimeMs,
+                            durationMs = (endTimeMs - startTimeMs).coerceAtLeast(0L)
+                        )
+                    }.sortedBy { it.realStartTime }
+
+                    videoDao.insertVideos(videoEntities)
 
                     val videoTotal = videoInfos.size
                     val insertedEntities = mutableListOf<KeyFrameEntity>()
@@ -76,18 +92,15 @@ class ImageRecognitionViewModel @Inject constructor(
                             val keyFrameId = UUID.randomUUID()
                             val realTime = addMicrosecondsToLong(video.startTimeText, keyFrame.timeUs)
 
-                            // UUIDはEntity生成時に自動で初期化されます（id = UUID.randomUUID()）
                             val newKeyFrame = KeyFrameEntity(
                                 id = keyFrameId,
                                 keyFramePath = keyFramePath,
-                                moviePath = video.uri.toString(),//video.uri,
+                                moviePath = video.uri.toString(),
                                 realTime = realTime,
-                                //realTime = addMicrosecondsToLong(video.startTimeText, keyFrame.timeUs),
                                 fileTime = keyFrame.timeUs
                             )
                             keyFrameDao.insertKeyFrames(listOf(newKeyFrame))
 
-                            // メモリ上に保持するリストに追加（これでUUIDが確定した状態のEntityが残ります）
                             insertedEntities.add(newKeyFrame)
                         }
 
@@ -101,9 +114,7 @@ class ImageRecognitionViewModel @Inject constructor(
                     if (additionalTotal > 0) {
                         for ((index, entity) in insertedEntities.withIndex()) {
                             ensureActive()
-
-                            // 2. ループ内でダミーデータ保存関数を呼び出す
-                            saveCropImage(/*clopImageDao,*/ entity)
+                            saveCropImage(entity)
 
                             val phase2Progress = (index + 1).toFloat() / additionalTotal
                             _progress.value = 0.5f + (phase2Progress * 0.5f)
