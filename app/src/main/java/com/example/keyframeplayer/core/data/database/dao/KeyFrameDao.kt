@@ -17,4 +17,7 @@ interface KeyFrameDao {
 
     @Query("SELECT * FROM KeyFrame ORDER BY realTime ASC")
     suspend fun getAllKeyFrames(): List<KeyFrameEntity>
+
+    @Query("DELETE FROM KeyFrame")
+    suspend fun clearKeyFrames()
 }

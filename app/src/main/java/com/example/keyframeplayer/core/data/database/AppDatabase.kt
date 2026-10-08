@@ -20,4 +20,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun cropImageDao(): CropImageDao
     abstract fun keyFrameDao(): KeyFrameDao
     abstract fun videoDao(): VideoDao
+
+    suspend fun clearAllData() {
+        cropImageDao().clearCropImages()
+        keyFrameDao().clearKeyFrames()
+        videoDao().clearVideos()
+    }
 }

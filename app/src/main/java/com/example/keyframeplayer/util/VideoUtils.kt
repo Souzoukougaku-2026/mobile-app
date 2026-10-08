@@ -64,7 +64,7 @@ object VideoUtils {
      */
     private fun loadVideoInfos(context: Context, mp4Files: List<DocumentFile>): List<VideoInfo> {
         val retriever = MediaMetadataRetriever()
-        val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
+        val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS", Locale.getDefault())
 
         return mp4Files.map { file ->
             var durationMs = 0L

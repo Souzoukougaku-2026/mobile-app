@@ -193,6 +193,18 @@ class MovieViewModel @Inject constructor(
     }
 
     /**
+     * 現在の再生位置から指定秒数分だけスキップ（前送り/巻き戻し）します。
+     * 動画ファイルの境界を跨いで時間軸上で移動します。
+     * @param deltaSeconds 移動する秒数（例: +5.0f, -5.0f）
+     */
+    fun onSkipBy(deltaSeconds: Float) {
+        val currentSec = _uiState.value.currentTime
+        val totalSec = _uiState.value.totalDurationSeconds
+        val targetSec = (currentSec + deltaSeconds).coerceIn(0f, totalSec)
+        onTimeChanged(targetSec)
+    }
+
+    /**
      * 指定された時間に現在の再生位置を変更します（シークバー・グラフ操作時）。
      * @param newTime 変更後の時間（秒）
      */

@@ -5,6 +5,7 @@ import android.view.View
 import android.widget.PopupMenu
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -17,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -42,6 +44,7 @@ fun MovieRoute(
     MovieScreen(
         uiState = uiState,
         onTimeChanged = viewModel::onTimeChanged,
+        onSkipBy = viewModel::onSkipBy,
         onProgressTapped = viewModel::onProgressTapped,
         onVisibleRangeChanged = viewModel::onVisibleRangeChanged,
         onPlayerPositionUpdated = viewModel::onPlayerPositionUpdated
@@ -53,6 +56,7 @@ fun MovieRoute(
 fun MovieScreen(
     uiState: MovieUiState,
     onTimeChanged: (Float) -> Unit,
+    onSkipBy: (Float) -> Unit,
     onProgressTapped: (Float) -> Unit,
     onVisibleRangeChanged: (Float) -> Unit,
     onPlayerPositionUpdated: (Int, Long) -> Unit
@@ -165,6 +169,7 @@ fun MovieScreen(
                 exoPlayer = exoPlayer,
                 isFullScreen = isFullScreen,
                 onToggleFullScreen = { isFullScreen = !isFullScreen },
+                onSkipBy = onSkipBy,
                 keyframes = uiState.keyframes
             )
         }
@@ -236,7 +241,7 @@ fun MovieScreen(
 }
 
 /**
- * 連続ストリーミング用 PlayerView コンテナ
+ * 連続ストリーミング用 PlayerView コンテナ (動画内ジェスチャー & オーバーレイ操作対応)
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -244,11 +249,49 @@ fun VideoPlayerContainer(
     exoPlayer: ExoPlayer,
     isFullScreen: Boolean,
     onToggleFullScreen: () -> Unit,
+    onSkipBy: (Float) -> Unit,
     keyframes: List<CropImage>
 ) {
     var isControllerVisible by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // ダブルタップのビジュアルフィードバック状態
+    var showRewindIndicator by remember { mutableStateOf(false) }
+    var showForwardIndicator by remember { mutableStateOf(false) }
+
+    LaunchedEffect(showRewindIndicator) {
+        if (showRewindIndicator) {
+            delay(800)
+            showRewindIndicator = false
+        }
+    }
+
+    LaunchedEffect(showForwardIndicator) {
+        if (showForwardIndicator) {
+            delay(800)
+            showForwardIndicator = false
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { offset ->
+                        val screenWidth = size.width
+                        if (offset.x < screenWidth / 2f) {
+                            // 左半分ダブルタップ: -10秒戻し
+                            showRewindIndicator = true
+                            onSkipBy(-10f)
+                        } else {
+                            // 右半分ダブルタップ: +10秒送り
+                            showForwardIndicator = true
+                            onSkipBy(10f)
+                        }
+                    }
+                )
+            }
+    ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
@@ -268,6 +311,19 @@ fun VideoPlayerContainer(
                                 )
                                 timeBar.setAdMarkerColor(android.graphics.Color.RED)
                             }
+
+                            // 早送り・巻き戻しボタンをファイル境界対応の 10秒処理にオーバーライド
+                            val ffwdButton = findViewById<View>(androidx.media3.ui.R.id.exo_ffwd)
+                            ffwdButton?.setOnClickListener {
+                                showForwardIndicator = true
+                                onSkipBy(10f)
+                            }
+                            val rewButton = findViewById<View>(androidx.media3.ui.R.id.exo_rew)
+                            rewButton?.setOnClickListener {
+                                showRewindIndicator = true
+                                onSkipBy(-10f)
+                            }
+
                             val fullScreenButton = findViewById<View>(androidx.media3.ui.R.id.exo_fullscreen)
                             fullScreenButton?.setOnClickListener {
                                 onToggleFullScreen()
@@ -291,6 +347,77 @@ fun VideoPlayerContainer(
                 }
             }
         )
+
+        // コントローラー表示時の動画上オーバーレイボタン (-10秒 / +10秒)
+        if (isControllerVisible) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(0.6f),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = {
+                        showRewindIndicator = true
+                        onSkipBy(-10f)
+                    },
+                    modifier = Modifier
+                        .size(52.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
+                ) {
+                    Text("-10s", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
+
+                IconButton(
+                    onClick = {
+                        showForwardIndicator = true
+                        onSkipBy(10f)
+                    },
+                    modifier = Modifier
+                        .size(52.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
+                ) {
+                    Text("+10s", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+
+        // ダブルタップ時の画面上フラッシュインジケーター (左: -10秒戻し)
+        if (showRewindIndicator) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.4f)
+                    .background(Color.White.copy(alpha = 0.25f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "⏪ -10秒",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+        }
+
+        // ダブルタップ時の画面上フラッシュインジケーター (右: +10秒送り)
+        if (showForwardIndicator) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.4f)
+                    .background(Color.White.copy(alpha = 0.25f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "+10秒 ⏩",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+        }
 
         // フルスクリーン切り替えボタン
         if (isControllerVisible) {

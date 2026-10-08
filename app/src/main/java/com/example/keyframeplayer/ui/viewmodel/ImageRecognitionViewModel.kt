@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.UUID
@@ -52,20 +53,39 @@ class ImageRecognitionViewModel @Inject constructor(
 
             try {
                 withContext(Dispatchers.IO) {
-                    val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
+                    // --- 古いDBデータおよび画像を全クリアしてリフレッシュ ---
+                    cropImageDao.clearCropImages()
+                    keyFrameDao.clearKeyFrames()
+                    videoDao.clearVideos()
+
+                    val imageDir = File(context.filesDir, "images")
+                    if (imageDir.exists() && imageDir.isDirectory) {
+                        imageDir.listFiles()?.forEach { file ->
+                            if (file.isFile) {
+                                file.delete()
+                            }
+                        }
+                    }
+
+                    val dateFormatWithMs = SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS", Locale.getDefault())
+                    val dateFormatSec = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
+
+                    fun parseDate(text: String): Long {
+                        return try {
+                            dateFormatWithMs.parse(text)?.time ?: dateFormatSec.parse(text)?.time ?: 0L
+                        } catch (e: Exception) {
+                            try {
+                                dateFormatSec.parse(text)?.time ?: 0L
+                            } catch (ex: Exception) {
+                                0L
+                            }
+                        }
+                    }
 
                     // --- フェーズ 0: 動画情報を時系列順にDB保存 ---
                     val videoEntities = videoInfos.map { video ->
-                        val startTimeMs = try {
-                            dateFormat.parse(video.startTimeText)?.time ?: 0L
-                        } catch (e: Exception) {
-                            0L
-                        }
-                        val endTimeMs = try {
-                            dateFormat.parse(video.endTimeText)?.time ?: 0L
-                        } catch (e: Exception) {
-                            0L
-                        }
+                        val startTimeMs = parseDate(video.startTimeText)
+                        val endTimeMs = parseDate(video.endTimeText)
                         VideoEntity(
                             uri = video.uri.toString(),
                             name = video.name,

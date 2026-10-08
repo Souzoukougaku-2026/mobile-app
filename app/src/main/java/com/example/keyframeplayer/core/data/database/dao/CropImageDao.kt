@@ -34,4 +34,7 @@ interface CropImageDao {
 
     @Query("SELECT * FROM CropImage WHERE id = :id")
     suspend fun getCropImageById(id: UUID): CropImageEntity?
+
+    @Query("DELETE FROM CropImage")
+    suspend fun clearCropImages()
 }

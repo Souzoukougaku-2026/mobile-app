@@ -23,6 +23,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import com.example.keyframeplayer.core.data.database.AppDatabase
 import com.example.keyframeplayer.feature.list.presentation.ListViewModel
 import com.example.keyframeplayer.feature.movie.presentation.MovieRoute
 import com.example.keyframeplayer.feature.movie.presentation.MovieViewModel
@@ -32,10 +34,16 @@ import com.example.keyframeplayer.ui.theme.KeyFramePlayerTheme
 import com.example.keyframeplayer.ui.viewmodel.VideoManagementViewModel
 import com.example.keyframeplayer.util.VideoUtils
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var appDatabase: AppDatabase
 
     // ViewModelの取得（状態とロジックの保持）
     private val viewModel: VideoManagementViewModel by viewModels()
@@ -76,27 +84,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        /*
-        lifecycleScope.launch {
-            // バックグラウンド（IO）で、定義済みのクリア関数を呼び出す
-            withContext(Dispatchers.IO) {
-                AppDatabase.clearDatabase(this@MainActivity)
-            }
-        }
-         */
-
-        // 画像が保存されている専用の「images」フォルダを指定する
-        val imageDir = File(this.filesDir, "images")
-
-        // フォルダが存在し、かつディレクトリであることを確認する
-        if (imageDir.exists() && imageDir.isDirectory) {
-            // 3. フォルダ内のすべてのファイルを安全に削除する
-            imageDir.listFiles()?.forEach { file ->
-                if (file.isFile) {
-                    file.delete()
-                }
-            }
-        }
+        // アプリ起動時に DB とストレージ上の画像ファイルをクリア・リフレッシュ
+        clearAppData()
 
         setContent {
             KeyFramePlayerTheme(dynamicColor = false) {
@@ -136,6 +125,32 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         mainHandler.removeCallbacks(checkStatusRunnable)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        clearAppData()
+    }
+
+    private fun clearAppData() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // DB (CropImage, KeyFrame, Video) の全データをクリア
+                appDatabase.clearAllData()
+
+                // 画像保存フォルダ内のファイルを全削除
+                val imageDir = File(filesDir, "images")
+                if (imageDir.exists() && imageDir.isDirectory) {
+                    imageDir.listFiles()?.forEach { file ->
+                        if (file.isFile) {
+                            file.delete()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 }
 
