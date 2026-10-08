@@ -31,6 +31,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import com.example.keyframeplayer.core.domain.model.CropImage
+import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.presentation.components.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -47,7 +48,10 @@ fun MovieRoute(
         onSkipBy = viewModel::onSkipBy,
         onProgressTapped = viewModel::onProgressTapped,
         onVisibleRangeChanged = viewModel::onVisibleRangeChanged,
-        onPlayerPositionUpdated = viewModel::onPlayerPositionUpdated
+        onPlayerPositionUpdated = viewModel::onPlayerPositionUpdated,
+        onTimeScaleSelected = viewModel::onTimeScaleSelected,
+        onClassFilterSelected = viewModel::onClassFilterSelected,
+        onColorFilterSelected = viewModel::onColorFilterSelected
     )
 }
 
@@ -59,7 +63,10 @@ fun MovieScreen(
     onSkipBy: (Float) -> Unit,
     onProgressTapped: (Float) -> Unit,
     onVisibleRangeChanged: (Float) -> Unit,
-    onPlayerPositionUpdated: (Int, Long) -> Unit
+    onPlayerPositionUpdated: (Int, Long) -> Unit,
+    onTimeScaleSelected: (TimeScale) -> Unit,
+    onClassFilterSelected: (String?) -> Unit,
+    onColorFilterSelected: (ImageColor?) -> Unit
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -181,14 +188,18 @@ fun MovieScreen(
                     .weight(1f)
                     .verticalScroll(rememberScrollState()),
             ) {
-                // 1. 全体グラフ (Overall Graph)
+                // --- 統合グラフ (Unified Graph Area) ---
                 Column(modifier = Modifier.padding(top = 8.dp)) {
                     Text(
-                        "全体グラフ (Overall Graph)",
+                        "検出データ集計グラフ",
                         style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                     )
-                    OverallGraphArea(uiState = uiState, onProgressTapped = onProgressTapped)
+
+                    UnifiedGraphArea(
+                        uiState = uiState,
+                        onProgressTapped = onProgressTapped
+                    )
 
                     OverallTimeTicks(uiState.totalDurationSeconds)
 
@@ -201,25 +212,16 @@ fun MovieScreen(
                             .padding(horizontal = 16.dp)
                             .height(24.dp)
                     )
-                }
 
-                Spacer(modifier = Modifier.height(2.dp))
-
-                // 2. 詳細グラフ (Detailed Graph)
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                    Text(
-                        "詳細グラフ (Detailed Graph)",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
-                    DetailedScrollableArea(
+                    GraphControlArea(
                         uiState = uiState,
-                        scrollState = scrollState,
-                        onTimeChanged = onTimeChanged,
-                        onProgressTapped = onProgressTapped
+                        onTimeScaleSelected = onTimeScaleSelected,
+                        onClassFilterSelected = onClassFilterSelected,
+                        onColorFilterSelected = onColorFilterSelected
                     )
                 }
+
+                Spacer(modifier = Modifier.height(4.dp))
 
                 TimeLabel(
                     currentTime = uiState.currentTime,
