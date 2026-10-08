@@ -5,6 +5,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.keyframeplayer.core.data.database.entity.VideoEntity
+import com.example.keyframeplayer.core.domain.model.CropImage
+import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.domain.MovieRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,8 +33,6 @@ class MovieViewModel @Inject constructor(
     private var lastSeekTimestamp = 0L
 
     init {
-        fetchBarData()
-        fetchDetailedBarData()
         fetchStoredKeyframes()
         fetchVideosAndInitialize()
     }
@@ -63,11 +63,11 @@ class MovieViewModel @Inject constructor(
                         it.copy(
                             videos = videos,
                             videoOffsetsMs = offsets,
-                            totalDurationSeconds = totalSec,
-                            viewportDurationSeconds = minOf(600f, totalSec)
+                            totalDurationSeconds = totalSec
                         )
                     }
                 }
+                recalculateGraphBars()
             }
         }
     }
@@ -137,7 +137,6 @@ class MovieViewModel @Inject constructor(
                 videos = videos,
                 videoOffsetsMs = offsets,
                 totalDurationSeconds = totalSec,
-                viewportDurationSeconds = minOf(600f, totalSec),
                 currentTime = overallSec,
                 initialMediaItemIndex = targetIndex,
                 initialPositionMs = posInVideoMs,
@@ -150,8 +149,77 @@ class MovieViewModel @Inject constructor(
     private fun fetchStoredKeyframes() {
         viewModelScope.launch {
             repository.getStoredKeyframes().collect { keyframes ->
-                _uiState.update { it.copy(keyframes = keyframes) }
+                val availableClasses = keyframes.map { it.className }.distinct().sorted()
+                _uiState.update {
+                    it.copy(
+                        keyframes = keyframes,
+                        availableClasses = availableClasses
+                    )
+                }
+                recalculateGraphBars()
             }
+        }
+    }
+
+    fun onTimeScaleSelected(timeScale: TimeScale) {
+        _uiState.update { it.copy(selectedTimeScale = timeScale) }
+        recalculateGraphBars()
+    }
+
+    fun onClassFilterSelected(className: String?) {
+        _uiState.update { it.copy(selectedClassFilter = className) }
+        recalculateGraphBars()
+    }
+
+    fun onColorFilterSelected(color: ImageColor?) {
+        _uiState.update { it.copy(selectedColorFilter = color) }
+        recalculateGraphBars()
+    }
+
+    private fun recalculateGraphBars() {
+        val state = _uiState.value
+        val keyframes = state.keyframes
+        val timeScale = state.selectedTimeScale
+        val classFilter = state.selectedClassFilter
+        val colorFilter = state.selectedColorFilter
+        val videos = state.videos
+
+        // 1. 条件で CropImage を絞り込み
+        val filtered = keyframes.filter { item ->
+            (classFilter == null || item.className == classFilter) &&
+            (colorFilter == null || item.color == colorFilter)
+        }
+
+        // 2. 基準時刻の決定 (全動画の最小 realStartTime または最初のキーフレーム時刻)
+        val baseRealTimeMs = videos.minOfOrNull { it.realStartTime }
+            ?: keyframes.minOfOrNull { it.realTime }
+            ?: 0L
+
+        // 3. 各バケットの件数集計
+        val barCount = timeScale.barCount
+        val intervalMs = (timeScale.intervalMinutes * 60 * 1000L)
+        val counts = IntArray(barCount)
+
+        if (intervalMs > 0L) {
+            for (item in filtered) {
+                val diffMs = item.realTime - baseRealTimeMs
+                if (diffMs >= 0L) {
+                    val index = (diffMs / intervalMs).toInt()
+                    if (index in 0 until barCount) {
+                        counts[index]++
+                    }
+                }
+            }
+        }
+
+        val countsList = counts.toList()
+        val maxCount = counts.maxOrNull()?.coerceAtLeast(1) ?: 1
+
+        _uiState.update {
+            it.copy(
+                graphBarCounts = countsList,
+                maxBarCount = maxCount
+            )
         }
     }
 
@@ -166,29 +234,6 @@ class MovieViewModel @Inject constructor(
             }
 
             _uiState.update { it.copy(isLoading = false) }
-        }
-    }
-
-    private fun fetchBarData() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            repository.getBarValues(_uiState.value.overallBarCount).collect { result ->
-                result.onSuccess { data ->
-                    _uiState.update { it.copy(barValues = data, isLoading = false) }
-                }.onFailure { error ->
-                    _uiState.update { it.copy(error = error.message, isLoading = false) }
-                }
-            }
-        }
-    }
-
-    private fun fetchDetailedBarData() {
-        viewModelScope.launch {
-            repository.getDetailedBarValues(_uiState.value.totalDetailedBarCount).collect { result ->
-                result.onSuccess { data ->
-                    _uiState.update { it.copy(detailedBarValues = data) }
-                }
-            }
         }
     }
 
@@ -259,9 +304,7 @@ class MovieViewModel @Inject constructor(
     }
 
     fun onVisibleRangeChanged(startProgress: Float) {
-        _uiState.update {
-            it.copy(visibleRangeStart = startProgress.coerceIn(0f, 1f - it.visibleRangeWidth))
-        }
+        // 後方互換維持
     }
 
     private fun mapOverallTimeToVideoPosition(
