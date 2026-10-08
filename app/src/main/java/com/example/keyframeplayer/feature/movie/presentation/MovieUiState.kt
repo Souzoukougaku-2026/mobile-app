@@ -3,6 +3,23 @@ package com.example.keyframeplayer.feature.movie.presentation
 import androidx.compose.runtime.Immutable
 import com.example.keyframeplayer.core.data.database.entity.VideoEntity
 import com.example.keyframeplayer.core.domain.model.CropImage
+import com.example.keyframeplayer.core.domain.model.ImageColor
+
+enum class TimeScale(
+    val label: String,
+    val totalSeconds: Float,
+    val intervalMinutes: Int
+) {
+    ONE_DAY("1日", 86400f, 16),
+    SIX_HOURS("6時間", 21600f, 4),
+    ONE_HALF_HOURS("1.5時間", 5400f, 1);
+
+    val intervalSeconds: Float
+        get() = intervalMinutes * 60f
+
+    val barCount: Int
+        get() = ((totalSeconds / 60f) / intervalMinutes).toInt() // 90
+}
 
 @Immutable
 data class MovieUiState(
@@ -13,14 +30,18 @@ data class MovieUiState(
 
     val currentTime: Float = 0f, // 全体時間軸における現在の再生時間 (秒)
     val totalDurationSeconds: Float = 3600f, // 全体総再生時間 (秒)
-    val viewportDurationSeconds: Float = 600f, // 詳細グラフ表示領域 (秒)
 
-    val overallBarCount: Int = 144,
-    val detailedBarCountPerHour: Int = 120,
+    // 時間スケール・フィルター状態
+    val selectedTimeScale: TimeScale = TimeScale.SIX_HOURS,
+    val selectedClassFilter: String? = null, // null は「すべて」
+    val selectedColorFilter: ImageColor? = null, // null は「すべて」
+    val availableClasses: List<String> = emptyList(),
+    val availableColors: List<ImageColor> = ImageColor.entries,
 
-    val barValues: List<Float> = emptyList(),
-    val detailedBarValues: List<Float> = emptyList(),
-    val visibleRangeStart: Float = 0f, // 0.0 to 1.0
+    // 統合グラフのバー別件数データ (要素数 = selectedTimeScale.barCount)
+    val graphBarCounts: List<Int> = emptyList(),
+    val maxBarCount: Int = 1,
+
     val isLoading: Boolean = false,
     val error: String? = null,
 
@@ -28,13 +49,7 @@ data class MovieUiState(
     val initialPositionMs: Long = 0L,
     val currentRealTimeMs: Long = 0L, // 現実絶対時刻 (Epoch ms)
     val seekTarget: SeekTarget? = null // ユーザー操作によるシーク要求
-) {
-    val visibleRangeWidth: Float
-        get() = if (totalDurationSeconds > 0) (viewportDurationSeconds / totalDurationSeconds).coerceIn(0f, 1f) else 1f
-
-    val totalDetailedBarCount: Int
-        get() = (detailedBarCountPerHour * (totalDurationSeconds / 3600f)).toInt().coerceAtLeast(1)
-}
+)
 
 data class SeekTarget(
     val mediaItemIndex: Int,
