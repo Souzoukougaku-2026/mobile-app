@@ -183,6 +183,8 @@ class MovieViewModel @Inject constructor(
         val classFilter = state.selectedClassFilter
         val colorFilter = state.selectedColorFilter
         val baseRealTimeMs = state.graphBaseRealTimeMs
+        val videoTotalMs = (state.totalDurationSeconds * 1000f).toLong().coerceAtLeast(1L)
+        val windowMs = (timeScale.totalSeconds * 1000f).toLong()
 
         // 1. 条件で CropImage を絞り込み
         val filtered = keyframes.filter { item ->
@@ -190,17 +192,24 @@ class MovieViewModel @Inject constructor(
             (colorFilter == null || item.color == colorFilter)
         }
 
-        // 2. 各バケットの件数集計 (CropImage.realTime をそのまま使用)
-        val barCount = timeScale.barCount
+        // 2. スクロール領域を含む全体時間幅 (動画全体の長さ または windowMs の大きい方)
+        val totalSpanMs = maxOf(videoTotalMs, windowMs)
         val intervalMs = (timeScale.intervalMinutes * 60 * 1000L)
-        val counts = IntArray(barCount)
+
+        val totalBarCount = if (intervalMs > 0L) {
+            ((totalSpanMs + intervalMs - 1) / intervalMs).toInt().coerceAtLeast(timeScale.barCount)
+        } else {
+            timeScale.barCount
+        }
+
+        val counts = IntArray(totalBarCount)
 
         if (intervalMs > 0L) {
             for (item in filtered) {
                 val diffMs = item.realTime - baseRealTimeMs
                 if (diffMs >= 0L) {
                     val index = (diffMs / intervalMs).toInt()
-                    if (index in 0 until barCount) {
+                    if (index in 0 until totalBarCount) {
                         counts[index]++
                     }
                 }
