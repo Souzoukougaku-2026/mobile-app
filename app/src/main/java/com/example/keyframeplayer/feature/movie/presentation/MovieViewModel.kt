@@ -55,6 +55,8 @@ class MovieViewModel @Inject constructor(
                 val totalMs = currentSum
                 val totalSec = (totalMs / 1000f).coerceAtLeast(1f)
 
+                updateRealTimeBounds(videos, _uiState.value.keyframes)
+
                 if (!isInitializedFromList) {
                     isInitializedFromList = true
                     initializePlaybackPosition(videos, offsets, totalSec)
@@ -146,6 +148,42 @@ class MovieViewModel @Inject constructor(
         }
     }
 
+    private fun updateRealTimeBounds(videos: List<VideoEntity>, keyframes: List<CropImage>) {
+        val validVideoStarts = videos.map { it.realStartTime }.filter { it > 0L }
+        val validVideoEnds = videos.map { it.realEndTime }.filter { it > 0L }
+
+        val minVideo = validVideoStarts.minOrNull()
+        val maxVideo = validVideoEnds.maxOrNull()
+
+        val minReal: Long
+        val maxReal: Long
+
+        if (minVideo != null && maxVideo != null && maxVideo >= minVideo) {
+            minReal = minVideo
+            maxReal = maxVideo
+        } else {
+            val validKeyframeTimes = keyframes.map { it.realTime }.filter { it > 0L }
+            val minKf = validKeyframeTimes.minOrNull()
+            val maxKf = validKeyframeTimes.maxOrNull()
+
+            if (minKf != null && maxKf != null && maxKf >= minKf) {
+                minReal = minKf
+                maxReal = maxKf
+            } else {
+                val now = System.currentTimeMillis()
+                minReal = now
+                maxReal = now + (_uiState.value.totalDurationSeconds * 1000f).toLong().coerceAtLeast(1000L)
+            }
+        }
+
+        _uiState.update {
+            it.copy(
+                minRealTimeMs = minReal,
+                maxRealTimeMs = maxReal
+            )
+        }
+    }
+
     private fun fetchStoredKeyframes() {
         viewModelScope.launch {
             repository.getStoredKeyframes().collect { keyframes ->
@@ -156,6 +194,7 @@ class MovieViewModel @Inject constructor(
                         availableClasses = availableClasses
                     )
                 }
+                updateRealTimeBounds(_uiState.value.videos, keyframes)
                 recalculateGraphBars()
             }
         }
@@ -182,8 +221,8 @@ class MovieViewModel @Inject constructor(
         val timeScale = state.selectedTimeScale
         val classFilter = state.selectedClassFilter
         val colorFilter = state.selectedColorFilter
-        val baseRealTimeMs = state.graphBaseRealTimeMs
-        val videoTotalMs = (state.totalDurationSeconds * 1000f).toLong().coerceAtLeast(1L)
+        val minRealTimeMs = state.minRealTimeMs
+        val totalRealDurationMs = state.totalRealDurationMs
 
         // 1. 条件で CropImage を絞り込み
         val filtered = keyframes.filter { item ->
@@ -191,26 +230,23 @@ class MovieViewModel @Inject constructor(
             (colorFilter == null || item.color == colorFilter)
         }
 
-        // 2. スクロール領域を含む全体時間幅 (24時間 = 86400秒 または 動画全体の長さ)
-        val totalSpanMs = maxOf(86400000L, videoTotalMs)
-        val intervalMs = (timeScale.intervalMinutes * 60 * 1000L)
-
-        val totalBarCount = if (intervalMs > 0L) {
-            ((totalSpanMs + intervalMs - 1) / intervalMs).toInt().coerceAtLeast(timeScale.barCount)
-        } else {
-            timeScale.barCount
+        // 2. 1バーあたりの時間幅 (画面1幅に約60〜90本のバーが入るように分解能を設定)
+        val bucketMs = when (timeScale) {
+            TimeScale.ONE_HALF_HOURS -> 90 * 1000L      // 1.5分/バー
+            TimeScale.SIX_HOURS -> 6 * 60 * 1000L        // 6分/バー
+            TimeScale.ONE_DAY -> 24 * 60 * 1000L        // 24分/バー
         }
 
+        val spanMs = maxOf(totalRealDurationMs, 24 * 3600 * 1000L)
+        val totalBarCount = ((spanMs + bucketMs - 1) / bucketMs).toInt().coerceIn(60, 3000)
         val counts = IntArray(totalBarCount)
 
-        if (intervalMs > 0L) {
-            for (item in filtered) {
-                val diffMs = item.realTime - baseRealTimeMs
-                if (diffMs >= 0L) {
-                    val index = (diffMs / intervalMs).toInt()
-                    if (index in 0 until totalBarCount) {
-                        counts[index]++
-                    }
+        for (item in filtered) {
+            val diffMs = item.realTime - minRealTimeMs
+            if (diffMs >= 0L) {
+                val index = (diffMs / bucketMs).toInt()
+                if (index in 0 until totalBarCount) {
+                    counts[index]++
                 }
             }
         }
@@ -303,18 +339,25 @@ class MovieViewModel @Inject constructor(
 
     fun onProgressTapped(progress: Float) {
         val state = _uiState.value
-        val baseRealTimeMs = state.graphBaseRealTimeMs
-        val videoTotalMs = (state.totalDurationSeconds * 1000f).toLong().coerceAtLeast(1L)
-        val totalSpanMs = maxOf(86400000L, videoTotalMs)
-        val targetRealTimeMs = baseRealTimeMs + (progress * totalSpanMs).toLong()
+        val minRealTimeMs = state.minRealTimeMs
+        val spanMs = maxOf(state.totalRealDurationMs, 24 * 3600 * 1000L)
+        val targetRealTimeMs = minRealTimeMs + (progress.coerceIn(0f, 1f) * spanMs).toLong()
 
         val videos = state.videos
         val offsets = state.videoOffsetsMs
-        if (videos.isEmpty()) return
+        if (videos.isEmpty()) {
+            _uiState.update { it.copy(currentRealTimeMs = targetRealTimeMs) }
+            return
+        }
 
         var index = videos.indexOfFirst { targetRealTimeMs >= it.realStartTime && targetRealTimeMs <= it.realEndTime }
         if (index == -1) {
-            index = videos.indexOfMinByOrNull { kotlin.math.abs(it.realStartTime - targetRealTimeMs) } ?: 0
+            index = videos.indexOfMinByOrNull {
+                minOf(
+                    kotlin.math.abs(it.realStartTime - targetRealTimeMs),
+                    kotlin.math.abs(it.realEndTime - targetRealTimeMs)
+                )
+            } ?: 0
         }
 
         val targetVideo = videos[index]

@@ -48,27 +48,27 @@ data class MovieUiState(
     val initialMediaItemIndex: Int = 0,
     val initialPositionMs: Long = 0L,
     val currentRealTimeMs: Long = 0L, // 現実絶対時刻 (Epoch ms)
+    val minRealTimeMs: Long = 0L,     // 動画ファイル群/キーフレームの最小現実時刻 (Epoch ms)
+    val maxRealTimeMs: Long = 0L,     // 動画ファイル群/キーフレームの最大現実時刻 (Epoch ms)
     val seekTarget: SeekTarget? = null // ユーザー操作によるシーク要求
 ) {
-    val effectiveGraphDuration: Float
-        get() = selectedTimeScale.totalSeconds
+    val totalRealDurationMs: Long
+        get() {
+            val diff = maxRealTimeMs - minRealTimeMs
+            // 1秒 〜 30日間の正常範囲にガード。異常値（Epoch msの初期値等）の場合は動画合計再生時間にフォールバック
+            return if (diff in 1000L..(30L * 24 * 3600 * 1000L)) {
+                diff
+            } else {
+                (totalDurationSeconds * 1000f).toLong().coerceAtLeast(1000L)
+            }
+        }
 
     val visibleRangeWidth: Float
         get() {
-            val totalSec = totalDurationSeconds.coerceAtLeast(1f)
-            val windowSec = selectedTimeScale.totalSeconds
-            return (windowSec / totalSec).coerceIn(0.01f, 1f)
+            val spanMs = maxOf(totalRealDurationMs.toFloat(), 24 * 3600 * 1000f)
+            val scaleWindowMs = selectedTimeScale.totalSeconds * 1000f
+            return (scaleWindowMs / spanMs).coerceIn(0.05f, 1f)
         }
-
-    val graphBaseRealTimeMs: Long
-        get() {
-            val minVideoStart = videos.minOfOrNull { it.realStartTime }
-            val minKeyFrame = keyframes.minOfOrNull { it.realTime }
-            return minVideoStart ?: minKeyFrame ?: 0L
-        }
-
-    val graphEndRealTimeMs: Long
-        get() = graphBaseRealTimeMs + (selectedTimeScale.totalSeconds * 1000L).toLong()
 }
 
 data class SeekTarget(

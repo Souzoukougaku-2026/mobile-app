@@ -35,9 +35,6 @@ import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.presentation.components.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun MovieRoute(
@@ -125,19 +122,20 @@ fun MovieScreen(
         }
     }
 
-    // 自動スクロール同期
-    LaunchedEffect(uiState.currentTime) {
+    // 自動スクロール同期 (現実時間ベース)
+    LaunchedEffect(uiState.currentRealTimeMs) {
         if (!scrollState.isScrollInProgress) {
             val totalWidthPx = scrollState.maxValue + scrollState.viewportSize
-            if (totalWidthPx > 0 && uiState.totalDurationSeconds > 0) {
-                val progress = uiState.currentTime / uiState.totalDurationSeconds
+            val spanMs = maxOf(uiState.totalRealDurationMs, 24 * 3600 * 1000L).toFloat()
+            if (totalWidthPx > 0 && spanMs > 0f) {
+                val progress = ((uiState.currentRealTimeMs - uiState.minRealTimeMs).toFloat() / spanMs).coerceIn(0f, 1f)
                 val targetScroll = (progress * totalWidthPx) - (scrollState.viewportSize / 2f)
                 scrollState.scrollTo(targetScroll.toInt().coerceIn(0, scrollState.maxValue))
             }
         }
     }
 
-    // スクロール位置の監視 (ANR対策)
+    // スクロール位置の監視
     LaunchedEffect(scrollState) {
         snapshotFlow {
             val totalContentWidth = scrollState.maxValue + scrollState.viewportSize
@@ -148,9 +146,6 @@ fun MovieScreen(
         }
         .collect { progress ->
             onVisibleRangeChanged(progress)
-            if (scrollState.isScrollInProgress) {
-                onTimeChanged(progress * uiState.totalDurationSeconds)
-            }
         }
     }
 
@@ -203,21 +198,6 @@ fun MovieScreen(
                         uiState = uiState,
                         scrollState = scrollState,
                         onProgressTapped = onProgressTapped
-                    )
-
-                    OverallTimeTicks(
-                        baseRealTimeMs = uiState.graphBaseRealTimeMs,
-                        windowMs = (uiState.selectedTimeScale.totalSeconds * 1000f).toLong()
-                    )
-
-                    SlimSlider(
-                        value = uiState.currentTime,
-                        onValueChange = onTimeChanged,
-                        valueRange = 0f..uiState.effectiveGraphDuration,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .height(24.dp)
                     )
 
                     GraphControlArea(
@@ -443,42 +423,6 @@ fun VideoPlayerContainer(
                     tint = Color.White
                 )
             }
-        }
-    }
-}
-
-@Composable
-fun OverallTimeTicks(
-    baseRealTimeMs: Long,
-    windowMs: Long
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        val dateFormat = remember(windowMs) {
-            if (windowMs >= 86400000L) {
-                SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-            } else {
-                SimpleDateFormat("HH:mm", Locale.getDefault())
-            }
-        }
-
-        val tickCount = 4
-        for (i in 0..tickCount) {
-            val tickTimeMs = baseRealTimeMs + (i * (windowMs / tickCount))
-            val label = if (baseRealTimeMs > 0L) {
-                dateFormat.format(Date(tickTimeMs))
-            } else {
-                "${i * (windowMs / 1000 / 3600 / 4)}h"
-            }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.Gray
-            )
         }
     }
 }
