@@ -1,11 +1,13 @@
 package com.example.keyframeplayer.feature.movie.presentation.components
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,6 +17,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.example.keyframeplayer.core.domain.model.ImageColor
@@ -24,114 +27,188 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.ceil
-import kotlin.math.floor
 
 @Composable
 fun UnifiedGraphArea(
     uiState: MovieUiState,
-    scrollState: ScrollState,
     onProgressTapped: (Float) -> Unit,
+    onTimeScaleSelected: (TimeScale) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BoxWithConstraints(
+    val timeScale = uiState.selectedTimeScale
+    val minReal = uiState.minRealTimeMs
+    val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+    val spanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
+
+    // ページング数計算（1ページ = 選択時間スケールの表示幅）
+    val pageCount = maxOf(1, ceil(spanMs.toDouble() / scaleWindowMs.toDouble()).toInt())
+
+    // 現在再生中の時刻が属するページインデックス
+    val currentRealTimeMs = uiState.currentRealTimeMs
+    val targetPage = if (scaleWindowMs > 0L) {
+        ((currentRealTimeMs - minReal) / scaleWindowMs).toInt().coerceIn(0, pageCount - 1)
+    } else 0
+
+    val pagerState = rememberPagerState(
+        initialPage = targetPage.coerceIn(0, pageCount - 1),
+        pageCount = { pageCount }
+    )
+
+    // 再生位置が変わった際に pager を自動スクロール追従（手動操作中を除く）
+    LaunchedEffect(targetPage, pageCount) {
+        if (!pagerState.isScrollInProgress && pagerState.currentPage != targetPage) {
+            pagerState.scrollToPage(targetPage.coerceIn(0, pageCount - 1))
+        }
+    }
+
+    // ピンチジェスチャーの累積倍率トラッキング
+    var accumulatedZoom by remember { mutableFloatStateOf(1.0f) }
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.small)
-    ) {
-        val viewportWidthPx = constraints.maxWidth.toFloat()
-        val parentMaxWidth = this.maxWidth
+            .pointerInput(timeScale) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Main)
+                        val changes = event.changes
+                        if (changes.size >= 2) {
+                            val p1 = changes[0]
+                            val p2 = changes[1]
+                            val currentDist = (p1.position - p2.position).getDistance()
+                            val prevDist = (p1.previousPosition - p2.previousPosition).getDistance()
 
-        // movieDetail 応用: visibleRangeWidth に基づくスワイプ全幅設定
-        val visibleWidthRatio = uiState.visibleRangeWidth.coerceIn(0.02f, 1f)
-        val maxAllowedWidth = 4000.dp
-        val calculatedWidth = parentMaxWidth / visibleWidthRatio
-        val totalWidth = if (calculatedWidth > maxAllowedWidth) maxAllowedWidth else calculatedWidth
-
-        // 時間スケール切り替え時に現在再生中の位置を中央へスクロール同期
-        LaunchedEffect(uiState.selectedTimeScale) {
-            val totalWidthPx = scrollState.maxValue + scrollState.viewportSize
-            val spanMs = maxOf(uiState.totalRealDurationMs, 24 * 3600 * 1000L).toFloat()
-            if (totalWidthPx > 0 && spanMs > 0f) {
-                val currentProgress = ((uiState.currentRealTimeMs - uiState.minRealTimeMs).toFloat() / spanMs).coerceIn(0f, 1f)
-                val targetScroll = (currentProgress * totalWidthPx) - (scrollState.viewportSize / 2f)
-                scrollState.scrollTo(targetScroll.toInt().coerceIn(0, scrollState.maxValue))
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(scrollState)
-        ) {
-            Column(
-                modifier = Modifier
-                    .width(totalWidth)
-                    .padding(vertical = 8.dp)
-            ) {
-                val primaryColor = MaterialTheme.colorScheme.primary
-
-                // 1. 統合ヒストグラム グラフ Canvas
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(105.dp)
-                        .padding(horizontal = 16.dp)
-                        .pointerInput(Unit) {
-                            detectTapGestures { offset ->
-                                if (size.width > 0) {
-                                    onProgressTapped((offset.x / size.width).coerceIn(0f, 1f))
+                            if (prevDist > 0f && currentDist > 0f) {
+                                val zoom = currentDist / prevDist
+                                accumulatedZoom *= zoom
+                                if (accumulatedZoom > 1.25f) {
+                                    val newScale = timeScale.zoomIn()
+                                    if (newScale != timeScale) {
+                                        onTimeScaleSelected(newScale)
+                                        accumulatedZoom = 1.0f
+                                    }
+                                } else if (accumulatedZoom < 0.75f) {
+                                    val newScale = timeScale.zoomOut()
+                                    if (newScale != timeScale) {
+                                        onTimeScaleSelected(newScale)
+                                        accumulatedZoom = 1.0f
+                                    }
                                 }
+                                p1.consume()
+                                p2.consume()
                             }
                         }
-                ) {
-                    val canvasWidth = size.width
-                    val canvasHeight = size.height
-                    val barCounts = uiState.graphBarCounts
-                    val barCount = barCounts.size
-                    val minReal = uiState.minRealTimeMs
-                    val spanMs = maxOf(uiState.totalRealDurationMs, 24 * 3600 * 1000L)
-                    val totalDuration = spanMs.toFloat().coerceAtLeast(1.0f)
-
-                    // 動画区間の背景ハイライト描画
-                    val videoOverlayColor = primaryColor.copy(alpha = 0.12f)
-                    for (video in uiState.videos) {
-                        val startProgress = ((video.realStartTime - minReal).toFloat() / totalDuration).coerceIn(0f, 1f)
-                        val endProgress = ((video.realEndTime - minReal).toFloat() / totalDuration).coerceIn(0f, 1f)
-                        val left = startProgress * canvasWidth
-                        val right = endProgress * canvasWidth
-                        val width = (right - left).coerceAtLeast(2f)
-
-                        drawRect(
-                            color = videoOverlayColor,
-                            topLeft = Offset(left, 0f),
-                            size = Size(width, canvasHeight)
-                        )
                     }
+                }
+            }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+        ) {
+            // ページインジケーター & ズーム操作ヒント
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "ページ ${pagerState.currentPage + 1} / $pageCount (${timeScale.label}表示)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "🔍 ピンチで拡大縮小",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
 
-                    if (barCount > 0) {
-                        val scrollOffset = scrollState.value.toFloat()
+            // 1. HorizontalPager によるページング処理
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxWidth()
+            ) { page ->
+                val pageStartMs = minReal + page * scaleWindowMs
+                val pageEndMs = pageStartMs + scaleWindowMs
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    val primaryColor = MaterialTheme.colorScheme.primary
+
+                    // 1ページあたりの Canvas 描画 (画面横幅に約90本のバー)
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(105.dp)
+                            .padding(horizontal = 16.dp)
+                            .pointerInput(page, pageStartMs, scaleWindowMs, spanMs) {
+                                detectTapGestures { offset ->
+                                    if (size.width > 0) {
+                                        val pageProgress = (offset.x / size.width).coerceIn(0f, 1f)
+                                        val clickedRealTimeMs = pageStartMs + (pageProgress * scaleWindowMs).toLong()
+                                        val overallProgress = ((clickedRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                        onProgressTapped(overallProgress)
+                                    }
+                                }
+                            }
+                    ) {
+                        val canvasWidth = size.width
+                        val canvasHeight = size.height
+
+                        // ページ内の動画範囲ハイライト
+                        val videoOverlayColor = primaryColor.copy(alpha = 0.12f)
+                        for (video in uiState.videos) {
+                            val vStart = video.realStartTime
+                            val vEnd = video.realEndTime
+                            if (vEnd >= pageStartMs && vStart <= pageEndMs) {
+                                val startProgress = ((vStart - pageStartMs).toFloat() / scaleWindowMs.toFloat()).coerceIn(0f, 1f)
+                                val endProgress = ((vEnd - pageStartMs).toFloat() / scaleWindowMs.toFloat()).coerceIn(0f, 1f)
+                                val left = startProgress * canvasWidth
+                                val right = endProgress * canvasWidth
+                                val width = (right - left).coerceAtLeast(2f)
+
+                                drawRect(
+                                    color = videoOverlayColor,
+                                    topLeft = Offset(left, 0f),
+                                    size = Size(width, canvasHeight)
+                                )
+                            }
+                        }
+
+                        // バーの描画 (画面横幅に1/90幅のバーを90本均等配置)
+                        val barCountInWindow = timeScale.barCountPerWindow
                         val spacing = 0.5.dp.toPx()
-                        val barWidth = ((canvasWidth - (spacing * (barCount + 1))) / barCount).coerceAtLeast(1f)
+                        val barWidth = ((canvasWidth - (spacing * (barCountInWindow + 1))) / barCountInWindow).coerceAtLeast(1f)
                         val stepWidth = barWidth + spacing
 
-                        val firstVisibleIndex = floor((scrollOffset - 16.dp.toPx()) / stepWidth).toInt().coerceAtLeast(0)
-                        val lastVisibleIndex = ceil((scrollOffset + viewportWidthPx) / stepWidth).toInt().coerceAtMost(barCount - 1)
-
+                        val startBarIndex = page * barCountInWindow
+                        val barCounts = uiState.graphBarCounts
                         val maxCount = uiState.maxBarCount.toFloat().coerceAtLeast(1f)
-                        val currentProgress = ((uiState.currentRealTimeMs - minReal).toFloat() / totalDuration).coerceIn(0f, 1f)
-                        val currentBarIndex = (currentProgress * barCount).toInt().coerceIn(0, barCount - 1)
 
-                        // 可視範囲の棒グラフを描画 (データ件数に素直に比例した高さで表示)
-                        for (index in firstVisibleIndex..lastVisibleIndex) {
-                            val count = barCounts[index]
+                        val currentRealMs = uiState.currentRealTimeMs
+                        val isCurrentInPage = currentRealMs in pageStartMs..pageEndMs
+                        val currentProgressInPage = if (isCurrentInPage) {
+                            ((currentRealMs - pageStartMs).toFloat() / scaleWindowMs.toFloat()).coerceIn(0f, 1f)
+                        } else -1f
+                        val currentBarIndexInPage = if (currentProgressInPage >= 0f) {
+                            (currentProgressInPage * barCountInWindow).toInt().coerceIn(0, barCountInWindow - 1)
+                        } else -1
+
+                        for (i in 0 until barCountInWindow) {
+                            val globalBarIndex = startBarIndex + i
+                            val count = barCounts.getOrNull(globalBarIndex) ?: 0
                             if (count <= 0) continue
 
-                            val left = spacing + (index * stepWidth)
+                            val left = spacing + (i * stepWidth)
                             val barHeightRatio = count.toFloat() / maxCount
                             val barHeightPx = (canvasHeight * 0.75f) * barHeightRatio
                             val top = canvasHeight - barHeightPx
 
-                            val isCurrent = (index == currentBarIndex)
+                            val isCurrent = (i == currentBarIndexInPage)
                             val color = if (isCurrent) Color.Red else primaryColor
 
                             drawRoundRect(
@@ -142,72 +219,67 @@ fun UnifiedGraphArea(
                             )
                         }
 
-                        // 現在位置インジケーター (赤色垂直線 & 日時バブルマーカー)
-                        val indicatorX = currentProgress * canvasWidth
+                        // 現在位置インジケーター (赤線 & バブル)
+                        if (isCurrentInPage && currentProgressInPage >= 0f) {
+                            val indicatorX = currentProgressInPage * canvasWidth
 
-                        drawLine(
-                            color = Color.Red,
-                            start = Offset(indicatorX, 0f),
-                            end = Offset(indicatorX, canvasHeight),
-                            strokeWidth = 2.5.dp.toPx()
-                        )
-
-                        // 日時を含むバブルマーカー (月/日 時:分:秒)
-                        val dateTimeSdf = SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
-                        val dateTimeText = if (uiState.currentRealTimeMs > 0L) {
-                            dateTimeSdf.format(Date(uiState.currentRealTimeMs))
-                        } else {
-                            ""
-                        }
-
-                        if (dateTimeText.isNotEmpty()) {
-                            val paint = android.graphics.Paint().apply {
-                                color = android.graphics.Color.WHITE
-                                textSize = 10.dp.toPx()
-                                isFakeBoldText = true
-                                textAlign = android.graphics.Paint.Align.CENTER
-                            }
-                            val textWidth = paint.measureText(dateTimeText)
-                            val bgWidth = textWidth + 14.dp.toPx()
-                            val bgHeight = 20.dp.toPx()
-                            val bgLeft = (indicatorX - bgWidth / 2f).coerceIn(0f, canvasWidth - bgWidth)
-
-                            drawRoundRect(
+                            drawLine(
                                 color = Color.Red,
-                                topLeft = Offset(bgLeft, 0f),
-                                size = Size(bgWidth, bgHeight),
-                                cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                                start = Offset(indicatorX, 0f),
+                                end = Offset(indicatorX, canvasHeight),
+                                strokeWidth = 2.5.dp.toPx()
                             )
 
-                            drawContext.canvas.nativeCanvas.drawText(
-                                dateTimeText,
-                                bgLeft + bgWidth / 2f,
-                                bgHeight - 5.dp.toPx(),
-                                paint
-                            )
+                            val dateTimeSdf = SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
+                            val dateTimeText = if (currentRealMs > 0L) dateTimeSdf.format(Date(currentRealMs)) else ""
+
+                            if (dateTimeText.isNotEmpty()) {
+                                val paint = android.graphics.Paint().apply {
+                                    color = android.graphics.Color.WHITE
+                                    textSize = 10.dp.toPx()
+                                    isFakeBoldText = true
+                                    textAlign = android.graphics.Paint.Align.CENTER
+                                }
+                                val textWidth = paint.measureText(dateTimeText)
+                                val bgWidth = textWidth + 14.dp.toPx()
+                                val bgHeight = 20.dp.toPx()
+                                val bgLeft = (indicatorX - bgWidth / 2f).coerceIn(0f, canvasWidth - bgWidth)
+
+                                drawRoundRect(
+                                    color = Color.Red,
+                                    topLeft = Offset(bgLeft, 0f),
+                                    size = Size(bgWidth, bgHeight),
+                                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                                )
+
+                                drawContext.canvas.nativeCanvas.drawText(
+                                    dateTimeText,
+                                    bgLeft + bgWidth / 2f,
+                                    bgHeight - 5.dp.toPx(),
+                                    paint
+                                )
+                            }
                         }
                     }
-                }
 
-                // 2. スライド追従日時目盛り
-                UnifiedTimeTicks(
-                    uiState = uiState,
-                    scrollOffset = scrollState.value.toFloat(),
-                    viewportWidthPx = viewportWidthPx
-                )
+                    // ページ単位のタイム目盛り
+                    PageTimeTicks(
+                        pageStartMs = pageStartMs,
+                        scaleWindowMs = scaleWindowMs
+                    )
+                }
             }
         }
     }
 }
 
 /**
- * 画面横スライドに対応した動的「日時」目盛りラベル（動的刻み間隔で文字被りゼロ）
+ * ページ内動的「日時」目盛りラベル
  */
 @Composable
-fun UnifiedTimeTicks(
-    uiState: MovieUiState,
-    scrollOffset: Float,
-    viewportWidthPx: Float
+fun PageTimeTicks(
+    pageStartMs: Long,
+    scaleWindowMs: Long
 ) {
     Box(
         modifier = Modifier
@@ -220,24 +292,21 @@ fun UnifiedTimeTicks(
                 .height(22.dp)
         ) {
             val canvasWidth = size.width
-            val minReal = uiState.minRealTimeMs
-            val spanMs = maxOf(uiState.totalRealDurationMs, 24 * 3600 * 1000L)
-            val maxReal = minReal + spanMs
+            val pageEndMs = pageStartMs + scaleWindowMs
 
-            if (canvasWidth <= 0f || spanMs <= 0L) return@Canvas
+            if (canvasWidth <= 0f || scaleWindowMs <= 0L) return@Canvas
 
-            // ラベル同士が重ならないために必要な最小間隔 (75dp)
-            val minSpacingPx = 75.dp.toPx()
-            val msPerPx = spanMs.toDouble() / canvasWidth.toDouble()
+            val minSpacingPx = 70.dp.toPx()
+            val msPerPx = scaleWindowMs.toDouble() / canvasWidth.toDouble()
             val minIntervalMs = (minSpacingPx * msPerPx).toLong()
 
-            // きりの良い刻み時間リストの中から、minIntervalMs 以上で最小のものを動的選択
             val candidateIntervalsMs = listOf(
+                1 * 60 * 1000L,       // 1分
+                5 * 60 * 1000L,       // 5分
                 15 * 60 * 1000L,      // 15分
                 30 * 60 * 1000L,      // 30分
                 60 * 60 * 1000L,      // 1時間
                 2 * 60 * 60 * 1000L,  // 2時間
-                3 * 60 * 60 * 1000L,  // 3時間
                 4 * 60 * 60 * 1000L,  // 4時間
                 6 * 60 * 60 * 1000L,  // 6時間
                 12 * 60 * 60 * 1000L, // 12時間
@@ -246,32 +315,24 @@ fun UnifiedTimeTicks(
             val intervalMs = candidateIntervalsMs.firstOrNull { it >= minIntervalMs }
                 ?: candidateIntervalsMs.last()
 
-            // 可視領域に収まるミリ秒範囲
-            val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
-            val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
-
-            val firstTick = (visibleStartMs / intervalMs) * intervalMs
-            val lastTick = ((visibleEndMs / intervalMs) + 1) * intervalMs
+            val firstTick = (pageStartMs / intervalMs) * intervalMs
+            val lastTick = ((pageEndMs / intervalMs) + 1) * intervalMs
 
             val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
             val dateTimeFormat = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-
-            // 表示範囲全体で複数日に跨がっているかを判定
-            val isMultiDays = (maxReal - minReal) > 24 * 60 * 60 * 1000L
+            val isMultiDays = scaleWindowMs > 24 * 60 * 60 * 1000L
 
             var tickTimeMs = firstTick
             var lastDrawnX = -1000f
 
-            while (tickTimeMs <= lastTick && tickTimeMs <= maxReal + intervalMs) {
-                if (tickTimeMs >= minReal) {
-                    val progress = ((tickTimeMs - minReal).toDouble() / spanMs.toDouble()).coerceIn(0.0, 1.0)
+            while (tickTimeMs <= lastTick) {
+                if (tickTimeMs in pageStartMs..pageEndMs) {
+                    val progress = ((tickTimeMs - pageStartMs).toDouble() / scaleWindowMs.toDouble()).coerceIn(0.0, 1.0)
                     val x = (progress * canvasWidth).toFloat()
 
-                    // 隣の描画位置から 60dp 以上離れている場合のみ描画（絶対重なり防止）
-                    if (x - lastDrawnX >= 60.dp.toPx() || lastDrawnX < 0f) {
+                    if (x - lastDrawnX >= 55.dp.toPx() || lastDrawnX < 0f) {
                         lastDrawnX = x
 
-                        // 目盛り刻み線
                         drawLine(
                             color = Color.Gray.copy(alpha = 0.6f),
                             start = Offset(x, 0f),
@@ -305,7 +366,7 @@ fun UnifiedTimeTicks(
 }
 
 /**
- * 時間スケール切替タブ & クラス/色フィルター操作用コントロールUI
+ * 時間スケール切替タブ (5段階) & クラス/色フィルター操作用コントロールUI
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -324,7 +385,7 @@ fun GraphControlArea(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        // 1. 時間スケール切り替えボタン群 (1日 / 6時間 / 1.5時間)
+        // 1. 時間スケール切り替えボタン群 (5段階: 3日 / 1日 / 6時間 / 3時間 / 1.5時間)
         Text(
             text = "表示時間スケール",
             style = MaterialTheme.typography.labelMedium,
@@ -332,7 +393,9 @@ fun GraphControlArea(
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             TimeScale.entries.forEach { scale ->
@@ -342,8 +405,7 @@ fun GraphControlArea(
                     onClick = { onTimeScaleSelected(scale) },
                     label = {
                         Text(scale.label)
-                    },
-                    modifier = Modifier.weight(1f)
+                    }
                 )
             }
         }
@@ -436,4 +498,3 @@ fun GraphControlArea(
         }
     }
 }
-

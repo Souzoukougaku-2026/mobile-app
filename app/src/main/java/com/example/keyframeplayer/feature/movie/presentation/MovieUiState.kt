@@ -8,17 +8,33 @@ import com.example.keyframeplayer.core.domain.model.ImageColor
 enum class TimeScale(
     val label: String,
     val totalSeconds: Float,
-    val intervalMinutes: Int
+    val intervalMinutes: Float
 ) {
-    ONE_DAY("1日", 86400f, 16),
-    SIX_HOURS("6時間", 21600f, 4),
-    ONE_HALF_HOURS("1.5時間", 5400f, 1);
+    THREE_DAYS("3日", 259200f, 48f),
+    ONE_DAY("1日", 86400f, 16f),
+    SIX_HOURS("6時間", 21600f, 4f),
+    THREE_HOURS("3時間", 10800f, 2f),
+    ONE_HALF_HOURS("1.5時間", 5400f, 1f);
 
     val intervalSeconds: Float
         get() = intervalMinutes * 60f
 
+    val barCountPerWindow: Int = 90
+
     val barCount: Int
-        get() = ((totalSeconds / 60f) / intervalMinutes).toInt() // 90
+        get() = barCountPerWindow
+
+    fun zoomIn(): TimeScale {
+        val entries = TimeScale.entries
+        val idx = entries.indexOf(this)
+        return if (idx < entries.lastIndex) entries[idx + 1] else this
+    }
+
+    fun zoomOut(): TimeScale {
+        val entries = TimeScale.entries
+        val idx = entries.indexOf(this)
+        return if (idx > 0) entries[idx - 1] else this
+    }
 }
 
 @Immutable

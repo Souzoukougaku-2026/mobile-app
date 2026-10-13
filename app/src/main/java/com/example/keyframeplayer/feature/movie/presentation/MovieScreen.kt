@@ -34,7 +34,6 @@ import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.presentation.components.*
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable
 fun MovieRoute(
@@ -69,7 +68,6 @@ fun MovieScreen(
     onColorFilterSelected: (ImageColor?) -> Unit
 ) {
     val context = LocalContext.current
-    val scrollState = rememberScrollState()
     var isFullScreen by remember { mutableStateOf(false) }
 
     // 単一の ExoPlayer インスタンスを作成し、画面のライフサイクルで管理
@@ -122,32 +120,7 @@ fun MovieScreen(
         }
     }
 
-    // 自動スクロール同期 (現実時間ベース)
-    LaunchedEffect(uiState.currentRealTimeMs) {
-        if (!scrollState.isScrollInProgress) {
-            val totalWidthPx = scrollState.maxValue + scrollState.viewportSize
-            val spanMs = maxOf(uiState.totalRealDurationMs, 24 * 3600 * 1000L).toFloat()
-            if (totalWidthPx > 0 && spanMs > 0f) {
-                val progress = ((uiState.currentRealTimeMs - uiState.minRealTimeMs).toFloat() / spanMs).coerceIn(0f, 1f)
-                val targetScroll = (progress * totalWidthPx) - (scrollState.viewportSize / 2f)
-                scrollState.scrollTo(targetScroll.toInt().coerceIn(0, scrollState.maxValue))
-            }
-        }
-    }
 
-    // スクロール位置の監視
-    LaunchedEffect(scrollState) {
-        snapshotFlow {
-            val totalContentWidth = scrollState.maxValue + scrollState.viewportSize
-            if (totalContentWidth > 0) scrollState.value.toFloat() / totalContentWidth else 0f
-        }
-        .distinctUntilChanged { old: Float, new: Float ->
-            kotlin.math.abs(old - new) < 0.001f
-        }
-        .collect { progress ->
-            onVisibleRangeChanged(progress)
-        }
-    }
 
     // 現在時刻に最も近いアクティブキーフレームの検索
     val activeKeyframe = remember(uiState.keyframes, uiState.currentRealTimeMs) {
@@ -196,8 +169,8 @@ fun MovieScreen(
 
                     UnifiedGraphArea(
                         uiState = uiState,
-                        scrollState = scrollState,
-                        onProgressTapped = onProgressTapped
+                        onProgressTapped = onProgressTapped,
+                        onTimeScaleSelected = onTimeScaleSelected
                     )
 
                     GraphControlArea(

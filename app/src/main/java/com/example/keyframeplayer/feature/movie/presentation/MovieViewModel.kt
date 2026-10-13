@@ -230,15 +230,12 @@ class MovieViewModel @Inject constructor(
             (colorFilter == null || item.color == colorFilter)
         }
 
-        // 2. 1バーあたりの時間幅 (画面1幅に約60〜90本のバーが入るように分解能を設定)
-        val bucketMs = when (timeScale) {
-            TimeScale.ONE_HALF_HOURS -> 90 * 1000L      // 1.5分/バー
-            TimeScale.SIX_HOURS -> 6 * 60 * 1000L        // 6分/バー
-            TimeScale.ONE_DAY -> 24 * 60 * 1000L        // 24分/バー
-        }
+        // 2. 1バーあたりの時間幅 (画面1幅にちょうど90本のバーが入るように設定)
+        val bucketMs = (timeScale.intervalMinutes * 60 * 1000f).toLong().coerceAtLeast(1000L)
+        val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong()
+        val spanMs = maxOf(totalRealDurationMs, scaleWindowMs)
 
-        val spanMs = maxOf(totalRealDurationMs, 24 * 3600 * 1000L)
-        val totalBarCount = ((spanMs + bucketMs - 1) / bucketMs).toInt().coerceIn(60, 3000)
+        val totalBarCount = maxOf(90, ((spanMs + bucketMs - 1) / bucketMs).toInt())
         val counts = IntArray(totalBarCount)
 
         for (item in filtered) {
