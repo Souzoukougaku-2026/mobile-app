@@ -91,8 +91,7 @@ fun UnifiedGraphArea(
                     val maxCount = uiState.maxBarCount.toFloat()
                     val baseRealMs = uiState.graphBaseRealTimeMs
                     val videoTotalMs = (uiState.totalDurationSeconds * 1000f).toLong().coerceAtLeast(1L)
-                    val windowMs = (uiState.selectedTimeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1L)
-                    val totalSpanMs = maxOf(videoTotalMs, windowMs)
+                    val totalSpanMs = maxOf(86400000L, videoTotalMs)
                     val currentRealMs = uiState.currentRealTimeMs
 
                     val currentProgress = if (totalSpanMs > 0L && currentRealMs >= baseRealMs) {

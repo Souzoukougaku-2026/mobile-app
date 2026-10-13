@@ -184,7 +184,6 @@ class MovieViewModel @Inject constructor(
         val colorFilter = state.selectedColorFilter
         val baseRealTimeMs = state.graphBaseRealTimeMs
         val videoTotalMs = (state.totalDurationSeconds * 1000f).toLong().coerceAtLeast(1L)
-        val windowMs = (timeScale.totalSeconds * 1000f).toLong()
 
         // 1. 条件で CropImage を絞り込み
         val filtered = keyframes.filter { item ->
@@ -192,8 +191,8 @@ class MovieViewModel @Inject constructor(
             (colorFilter == null || item.color == colorFilter)
         }
 
-        // 2. スクロール領域を含む全体時間幅 (動画全体の長さ または windowMs の大きい方)
-        val totalSpanMs = maxOf(videoTotalMs, windowMs)
+        // 2. スクロール領域を含む全体時間幅 (24時間 = 86400秒 または 動画全体の長さ)
+        val totalSpanMs = maxOf(86400000L, videoTotalMs)
         val intervalMs = (timeScale.intervalMinutes * 60 * 1000L)
 
         val totalBarCount = if (intervalMs > 0L) {
@@ -305,8 +304,9 @@ class MovieViewModel @Inject constructor(
     fun onProgressTapped(progress: Float) {
         val state = _uiState.value
         val baseRealTimeMs = state.graphBaseRealTimeMs
-        val windowMs = state.selectedTimeScale.totalSeconds * 1000L
-        val targetRealTimeMs = baseRealTimeMs + (progress * windowMs).toLong()
+        val videoTotalMs = (state.totalDurationSeconds * 1000f).toLong().coerceAtLeast(1L)
+        val totalSpanMs = maxOf(86400000L, videoTotalMs)
+        val targetRealTimeMs = baseRealTimeMs + (progress * totalSpanMs).toLong()
 
         val videos = state.videos
         val offsets = state.videoOffsetsMs
