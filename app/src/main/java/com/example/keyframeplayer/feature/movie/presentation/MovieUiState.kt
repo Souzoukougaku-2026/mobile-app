@@ -53,6 +53,13 @@ data class MovieUiState(
     val effectiveGraphDuration: Float
         get() = selectedTimeScale.totalSeconds
 
+    val visibleRangeWidth: Float
+        get() {
+            val totalSec = totalDurationSeconds.coerceAtLeast(1f)
+            val windowSec = selectedTimeScale.totalSeconds
+            return (windowSec / totalSec).coerceIn(0.01f, 1f)
+        }
+
     val graphBaseRealTimeMs: Long
         get() {
             val minVideoStart = videos.minOfOrNull { it.realStartTime }

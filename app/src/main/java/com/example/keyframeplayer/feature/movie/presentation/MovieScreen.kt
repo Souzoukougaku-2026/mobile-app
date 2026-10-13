@@ -201,6 +201,7 @@ fun MovieScreen(
 
                     UnifiedGraphArea(
                         uiState = uiState,
+                        scrollState = scrollState,
                         onProgressTapped = onProgressTapped
                     )
 
