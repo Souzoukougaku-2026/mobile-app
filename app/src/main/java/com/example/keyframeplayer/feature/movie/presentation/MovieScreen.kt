@@ -35,6 +35,9 @@ import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.presentation.components.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun MovieRoute(
@@ -201,8 +204,10 @@ fun MovieScreen(
                         onProgressTapped = onProgressTapped
                     )
 
-                    
-                    OverallTimeTicks(uiState.effectiveGraphDuration)
+                    OverallTimeTicks(
+                        baseRealTimeMs = uiState.graphBaseRealTimeMs,
+                        windowMs = (uiState.selectedTimeScale.totalSeconds * 1000f).toLong()
+                    )
 
                     SlimSlider(
                         value = uiState.currentTime,
@@ -442,29 +447,31 @@ fun VideoPlayerContainer(
 }
 
 @Composable
-fun OverallTimeTicks(totalSeconds: Float) {
+fun OverallTimeTicks(
+    baseRealTimeMs: Long,
+    windowMs: Long
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
+        val dateFormat = remember(windowMs) {
+            if (windowMs >= 86400000L) {
+                SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
+            } else {
+                SimpleDateFormat("HH:mm", Locale.getDefault())
+            }
+        }
+
         val tickCount = 4
         for (i in 0..tickCount) {
-            val sec = i * (totalSeconds / tickCount)
-            val hours = sec / 3600f
-            val label = if (totalSeconds < 7200f) {
-                if (hours < 1.0f) {
-                    "${(sec / 60f).toInt()}分"
-                } else {
-                    "%.1fh".format(hours)
-                }
+            val tickTimeMs = baseRealTimeMs + (i * (windowMs / tickCount))
+            val label = if (baseRealTimeMs > 0L) {
+                dateFormat.format(Date(tickTimeMs))
             } else {
-                if (hours % 1.0f == 0f) {
-                    "${hours.toInt()}h"
-                } else {
-                    "%.1fh".format(hours)
-                }
+                "${i * (windowMs / 1000 / 3600 / 4)}h"
             }
             Text(
                 text = label,

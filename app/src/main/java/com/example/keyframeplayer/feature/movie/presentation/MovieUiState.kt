@@ -52,6 +52,16 @@ data class MovieUiState(
 ) {
     val effectiveGraphDuration: Float
         get() = selectedTimeScale.totalSeconds
+
+    val graphBaseRealTimeMs: Long
+        get() {
+            val minVideoStart = videos.minOfOrNull { it.realStartTime }
+            val minKeyFrame = keyframes.minOfOrNull { it.realTime }
+            return minVideoStart ?: minKeyFrame ?: 0L
+        }
+
+    val graphEndRealTimeMs: Long
+        get() = graphBaseRealTimeMs + (selectedTimeScale.totalSeconds * 1000L).toLong()
 }
 
 data class SeekTarget(

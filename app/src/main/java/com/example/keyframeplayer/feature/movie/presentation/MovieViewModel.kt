@@ -182,7 +182,7 @@ class MovieViewModel @Inject constructor(
         val timeScale = state.selectedTimeScale
         val classFilter = state.selectedClassFilter
         val colorFilter = state.selectedColorFilter
-        val videos = state.videos
+        val baseRealTimeMs = state.graphBaseRealTimeMs
 
         // 1. 条件で CropImage を絞り込み
         val filtered = keyframes.filter { item ->
@@ -190,12 +190,7 @@ class MovieViewModel @Inject constructor(
             (colorFilter == null || item.color == colorFilter)
         }
 
-        // 2. 基準時刻の決定 (全動画の最小 realStartTime または最初のキーフレーム時刻)
-        val baseRealTimeMs = videos.minOfOrNull { it.realStartTime }
-            ?: keyframes.minOfOrNull { it.realTime }
-            ?: 0L
-
-        // 3. 各バケットの件数集計
+        // 2. 各バケットの件数集計 (CropImage.realTime をそのまま使用)
         val barCount = timeScale.barCount
         val intervalMs = (timeScale.intervalMinutes * 60 * 1000L)
         val counts = IntArray(barCount)
@@ -299,9 +294,34 @@ class MovieViewModel @Inject constructor(
     }
 
     fun onProgressTapped(progress: Float) {
-        val displayMax = _uiState.value.effectiveGraphDuration
-        val newTime = progress * displayMax
-        onTimeChanged(newTime)
+        val state = _uiState.value
+        val baseRealTimeMs = state.graphBaseRealTimeMs
+        val windowMs = state.selectedTimeScale.totalSeconds * 1000L
+        val targetRealTimeMs = baseRealTimeMs + (progress * windowMs).toLong()
+
+        val videos = state.videos
+        val offsets = state.videoOffsetsMs
+        if (videos.isEmpty()) return
+
+        var index = videos.indexOfFirst { targetRealTimeMs >= it.realStartTime && targetRealTimeMs <= it.realEndTime }
+        if (index == -1) {
+            index = videos.indexOfMinByOrNull { kotlin.math.abs(it.realStartTime - targetRealTimeMs) } ?: 0
+        }
+
+        val targetVideo = videos[index]
+        val posMs = (targetRealTimeMs - targetVideo.realStartTime).coerceIn(0L, targetVideo.durationMs)
+        val overallMs = (offsets.getOrNull(index) ?: 0L) + posMs
+        val overallSec = (overallMs / 1000f).coerceIn(0f, state.totalDurationSeconds)
+
+        lastSeekTimestamp = System.currentTimeMillis()
+
+        _uiState.update {
+            it.copy(
+                currentTime = overallSec,
+                currentRealTimeMs = targetRealTimeMs,
+                seekTarget = SeekTarget(index, posMs)
+            )
+        }
     }
 
     fun onVisibleRangeChanged(startProgress: Float) {
