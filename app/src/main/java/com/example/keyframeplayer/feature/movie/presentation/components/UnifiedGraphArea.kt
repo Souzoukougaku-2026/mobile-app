@@ -201,7 +201,7 @@ fun UnifiedGraphArea(
 }
 
 /**
- * 画面横スライドに対応した動的「日時」目盛りラベル
+ * 画面横スライドに対応した動的「日時」目盛りラベル（動的刻み間隔で文字被りゼロ）
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -217,54 +217,86 @@ fun UnifiedTimeTicks(
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(20.dp)
+                .height(22.dp)
         ) {
             val canvasWidth = size.width
             val minReal = uiState.minRealTimeMs
             val spanMs = maxOf(uiState.totalRealDurationMs, 24 * 3600 * 1000L)
             val maxReal = minReal + spanMs
 
-            val intervalMs = when (uiState.selectedTimeScale) {
-                TimeScale.ONE_HALF_HOURS -> 10 * 60 * 1000L // 10分刻み
-                TimeScale.SIX_HOURS -> 30 * 60 * 1000L      // 30分刻み
-                TimeScale.ONE_DAY -> 2 * 60 * 60 * 1000L    // 2時間刻み
-            }
+            if (canvasWidth <= 0f || spanMs <= 0L) return@Canvas
 
+            // ラベル同士が重ならないために必要な最小間隔 (75dp)
+            val minSpacingPx = 75.dp.toPx()
+            val msPerPx = spanMs.toDouble() / canvasWidth.toDouble()
+            val minIntervalMs = (minSpacingPx * msPerPx).toLong()
+
+            // きりの良い刻み時間リストの中から、minIntervalMs 以上で最小のものを動的選択
+            val candidateIntervalsMs = listOf(
+                15 * 60 * 1000L,      // 15分
+                30 * 60 * 1000L,      // 30分
+                60 * 60 * 1000L,      // 1時間
+                2 * 60 * 60 * 1000L,  // 2時間
+                3 * 60 * 60 * 1000L,  // 3時間
+                4 * 60 * 60 * 1000L,  // 4時間
+                6 * 60 * 60 * 1000L,  // 6時間
+                12 * 60 * 60 * 1000L, // 12時間
+                24 * 60 * 60 * 1000L  // 24時間
+            )
+            val intervalMs = candidateIntervalsMs.firstOrNull { it >= minIntervalMs }
+                ?: candidateIntervalsMs.last()
+
+            // 可視領域に収まるミリ秒範囲
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
 
             val firstTick = (visibleStartMs / intervalMs) * intervalMs
             val lastTick = ((visibleEndMs / intervalMs) + 1) * intervalMs
 
+            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
             val dateTimeFormat = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
 
+            // 表示範囲全体で複数日に跨がっているかを判定
+            val isMultiDays = (maxReal - minReal) > 24 * 60 * 60 * 1000L
+
             var tickTimeMs = firstTick
+            var lastDrawnX = -1000f
+
             while (tickTimeMs <= lastTick && tickTimeMs <= maxReal + intervalMs) {
                 if (tickTimeMs >= minReal) {
-                    val progress = ((tickTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                    val x = progress * canvasWidth
+                    val progress = ((tickTimeMs - minReal).toDouble() / spanMs.toDouble()).coerceIn(0.0, 1.0)
+                    val x = (progress * canvasWidth).toFloat()
 
-                    // 目盛り刻み線
-                    drawLine(
-                        color = Color.Gray.copy(alpha = 0.5f),
-                        start = Offset(x, 0f),
-                        end = Offset(x, 5.dp.toPx()),
-                        strokeWidth = 1.dp.toPx()
-                    )
+                    // 隣の描画位置から 60dp 以上離れている場合のみ描画（絶対重なり防止）
+                    if (x - lastDrawnX >= 60.dp.toPx() || lastDrawnX < 0f) {
+                        lastDrawnX = x
 
-                    // 日時ラベル (MM/dd HH:mm)
-                    val label = dateTimeFormat.format(Date(tickTimeMs))
+                        // 目盛り刻み線
+                        drawLine(
+                            color = Color.Gray.copy(alpha = 0.6f),
+                            start = Offset(x, 0f),
+                            end = Offset(x, 5.dp.toPx()),
+                            strokeWidth = 1.2.dp.toPx()
+                        )
 
-                    drawContext.canvas.nativeCanvas.drawText(
-                        label,
-                        x,
-                        size.height - 2.dp.toPx(),
-                        android.graphics.Paint().apply {
-                            color = android.graphics.Color.GRAY
-                            textSize = 9.5.dp.toPx()
-                            textAlign = android.graphics.Paint.Align.CENTER
+                        val label = if (isMultiDays) {
+                            dateTimeFormat.format(Date(tickTimeMs))
+                        } else {
+                            timeFormat.format(Date(tickTimeMs))
                         }
-                    )
+
+                        drawContext.canvas.nativeCanvas.drawText(
+                            label,
+                            x,
+                            size.height - 2.dp.toPx(),
+                            android.graphics.Paint().apply {
+                                color = android.graphics.Color.DKGRAY
+                                textSize = 10.dp.toPx()
+                                isAntiAlias = true
+                                textAlign = android.graphics.Paint.Align.CENTER
+                            }
+                        )
+                    }
                 }
                 tickTimeMs += intervalMs
             }
