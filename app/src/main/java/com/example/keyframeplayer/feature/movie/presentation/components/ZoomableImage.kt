@@ -30,6 +30,7 @@ fun ZoomableImage(
     initialBottomRight: Offset,
     imagePath: String? = null,
     isPixelCoordinates: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -79,7 +80,7 @@ fun ZoomableImage(
         )
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()

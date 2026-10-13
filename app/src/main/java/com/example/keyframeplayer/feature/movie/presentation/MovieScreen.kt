@@ -195,7 +195,20 @@ fun MovieScreen(
                 BottomInfoArea(
                     currentTime = uiState.currentTime,
                     activeKeyframe = activeKeyframe,
-                    realTimeMs = uiState.currentRealTimeMs
+                    keyframes = uiState.keyframes,
+                    realTimeMs = uiState.currentRealTimeMs,
+                    onSwipeLeft = { cropImage ->
+                        // NOPE スワイプ時の動作 (例: 次のキーフレームまたはスキップ)
+                    },
+                    onSwipeRight = { cropImage ->
+                        // LIKE スワイプ時の動作 (例: タイムラインシーク等のアクション)
+                        cropImage?.let {
+                            val progress = if (uiState.totalRealDurationMs > 0L) {
+                                ((it.realTime - uiState.minRealTimeMs).toFloat() / uiState.totalRealDurationMs.toFloat()).coerceIn(0f, 1f)
+                            } else 0f
+                            onProgressTapped(progress)
+                        }
+                    }
                 )
             }
         }
