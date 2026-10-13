@@ -201,12 +201,13 @@ fun MovieScreen(
                         onProgressTapped = onProgressTapped
                     )
 
-                    OverallTimeTicks(uiState.totalDurationSeconds)
+                    
+                    OverallTimeTicks(uiState.effectiveGraphDuration)
 
                     SlimSlider(
                         value = uiState.currentTime,
                         onValueChange = onTimeChanged,
-                        valueRange = 0f..uiState.totalDurationSeconds,
+                        valueRange = 0f..uiState.effectiveGraphDuration,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
@@ -450,7 +451,21 @@ fun OverallTimeTicks(totalSeconds: Float) {
     ) {
         val tickCount = 4
         for (i in 0..tickCount) {
-            val label = "${(i * (totalSeconds / 3600 / 4)).toInt()}h"
+            val sec = i * (totalSeconds / tickCount)
+            val hours = sec / 3600f
+            val label = if (totalSeconds < 7200f) {
+                if (hours < 1.0f) {
+                    "${(sec / 60f).toInt()}分"
+                } else {
+                    "%.1fh".format(hours)
+                }
+            } else {
+                if (hours % 1.0f == 0f) {
+                    "${hours.toInt()}h"
+                } else {
+                    "%.1fh".format(hours)
+                }
+            }
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,

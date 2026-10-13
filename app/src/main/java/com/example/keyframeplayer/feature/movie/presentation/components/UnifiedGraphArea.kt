@@ -65,12 +65,13 @@ fun UnifiedGraphArea(
                 val barCounts = uiState.graphBarCounts
                 val barCount = barCounts.size
                 val maxCount = uiState.maxBarCount.toFloat()
+                val displayMax = uiState.effectiveGraphDuration
 
                 if (barCount > 0) {
                     val spacing = 1.dp.toPx()
                     val barWidth = (canvasWidth - (spacing * (barCount + 1))) / barCount
-                    val currentProgress = if (uiState.totalDurationSeconds > 0) {
-                        (uiState.currentTime / uiState.totalDurationSeconds).coerceIn(0f, 1f)
+                    val currentProgress = if (displayMax > 0) {
+                        (uiState.currentTime / displayMax).coerceIn(0f, 1f)
                     } else 0f
                     val currentBarIndex = (currentProgress * barCount).toInt().coerceIn(0, barCount - 1)
 
@@ -100,8 +101,8 @@ fun UnifiedGraphArea(
                 }
 
                 // 現在位置インジケーター (赤色の垂直線)
-                val indicatorProgress = if (uiState.totalDurationSeconds > 0) {
-                    (uiState.currentTime / uiState.totalDurationSeconds).coerceIn(0f, 1f)
+                val indicatorProgress = if (displayMax > 0) {
+                    (uiState.currentTime / displayMax).coerceIn(0f, 1f)
                 } else 0f
                 val indicatorX = indicatorProgress * canvasWidth
 

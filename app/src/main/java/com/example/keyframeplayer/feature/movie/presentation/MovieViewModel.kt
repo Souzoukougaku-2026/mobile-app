@@ -299,7 +299,8 @@ class MovieViewModel @Inject constructor(
     }
 
     fun onProgressTapped(progress: Float) {
-        val newTime = progress * _uiState.value.totalDurationSeconds
+        val displayMax = _uiState.value.effectiveGraphDuration
+        val newTime = progress * displayMax
         onTimeChanged(newTime)
     }
 

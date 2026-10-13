@@ -49,7 +49,10 @@ data class MovieUiState(
     val initialPositionMs: Long = 0L,
     val currentRealTimeMs: Long = 0L, // 現実絶対時刻 (Epoch ms)
     val seekTarget: SeekTarget? = null // ユーザー操作によるシーク要求
-)
+) {
+    val effectiveGraphDuration: Float
+        get() = selectedTimeScale.totalSeconds
+}
 
 data class SeekTarget(
     val mediaItemIndex: Int,
