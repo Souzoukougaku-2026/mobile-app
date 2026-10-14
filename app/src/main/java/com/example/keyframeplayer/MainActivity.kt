@@ -89,25 +89,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             KeyFramePlayerTheme(dynamicColor = false) {
-                // ViewModelから各状態（State）をリアルタイムに監視
-                val currentUri by viewModel.selectedUri.collectAsState()
-                val isAccessible by viewModel.isAccessible.collectAsState()
-                val videoInfos by viewModel.videoInfos.collectAsState()
-                val isLoading by viewModel.isLoading.collectAsState()
-
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    // 💡 修正：videoInfos を画面コンポーザブルへそのまま引き渡す
-                    // （※画面側である DirectoryManagementScreen の引数名も videoInfos への変更が必要です）
-                    /*DirectoryManagementScreen(
-                        currentUri = currentUri?.toString() ?: "None",
-                        isAccessible = isAccessible,
-                        videoInfos = videoInfos,
-                        isLoading = isLoading,
-                        onChooseClick = { pickDirLauncher.launch(null) }
-                    )*/
-
                     AppNavigation(
-                        videoViewModel = viewModel,  //videoViewModel,
+                        videoViewModel = viewModel,
                         onChooseClick = { pickDirLauncher.launch(null) }
                     )
                 }
@@ -163,7 +147,6 @@ fun AppNavigation(
 
     NavHost(
         navController = navController,
-        //startDestination = "movie",
         startDestination = "directory_management",
     ) {
         composable("directory_management") {
@@ -213,9 +196,5 @@ fun AppNavigation(
             val movieViewModel: MovieViewModel = hiltViewModel()
             MovieRoute(viewModel = movieViewModel)
         }
-        /*composable("list") {
-            val viewModel: ListViewModel = hiltViewModel()
-            ListRoute(viewModel = viewModel)
-        }*/
     }
 }

@@ -1,29 +1,29 @@
 package com.example.keyframeplayer.ui.viewmodel
 
 import android.content.Context
-//import android.app.Application
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.keyframeplayer.util.KeyFrameUtils.addMicrosecondsToLong
-import com.example.keyframeplayer.util.KeyFrameUtils.extractKeyframes
-import com.example.keyframeplayer.util.KeyFrameUtils.saveBitmapToInternalStorage
-//import com.example.keyframeplayer.data.AppDatabase
-//import com.example.keyframeplayer.data.ClopImageDao
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.example.keyframeplayer.core.data.database.dao.CropImageDao
 import com.example.keyframeplayer.core.data.database.dao.KeyFrameDao
 import com.example.keyframeplayer.core.data.database.dao.VideoDao
-import com.example.keyframeplayer.core.data.database.entity.CropImageEntity
 import com.example.keyframeplayer.core.data.database.entity.KeyFrameEntity
 import com.example.keyframeplayer.core.data.database.entity.VideoEntity
-import com.example.keyframeplayer.core.domain.model.ImageColor
+import com.example.keyframeplayer.util.KeyFrameUtils.addMicrosecondsToLong
+import com.example.keyframeplayer.util.KeyFrameUtils.forEachKeyframe
+import com.example.keyframeplayer.util.KeyFrameUtils.saveBitmapToInternalStorage
 import com.example.keyframeplayer.util.VideoInfo
+import com.example.keyframeplayer.worker.MLWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -46,14 +46,20 @@ class ImageRecognitionViewModel @Inject constructor(
     private val _progress = MutableStateFlow(0f)
     val progress = _progress.asStateFlow()
 
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage = _errorMessage.asStateFlow()
+
     fun startProcessing(videoInfos: List<VideoInfo>) {
+        if (_isLoading.value) return
+
         viewModelScope.launch {
             _isLoading.value = true
             _progress.value = 0f
+            _errorMessage.value = null
 
             try {
                 withContext(Dispatchers.IO) {
-                    // --- 古いDBデータおよび画像を全クリアしてリフレッシュ ---
+                    // 古いDBデータおよび画像を全クリアしてリフレッシュ
                     cropImageDao.clearCropImages()
                     keyFrameDao.clearKeyFrames()
                     videoDao.clearVideos()
@@ -82,7 +88,7 @@ class ImageRecognitionViewModel @Inject constructor(
                         }
                     }
 
-                    // --- フェーズ 0: 動画情報を時系列順にDB保存 ---
+                    // フェーズ 0: 動画情報を時系列順にDB保存
                     val videoEntities = videoInfos.map { video ->
                         val startTimeMs = parseDate(video.startTimeText)
                         val endTimeMs = parseDate(video.endTimeText)
@@ -98,79 +104,103 @@ class ImageRecognitionViewModel @Inject constructor(
                     videoDao.insertVideos(videoEntities)
 
                     val videoTotal = videoInfos.size
-                    val insertedEntities = mutableListOf<KeyFrameEntity>()
 
-                    // --- フェーズ 1: 動画の解析とDB保存 ---
+                    // フェーズ 1: キーフレーム抽出とキーフレームDB保存
                     for ((index, video) in videoInfos.withIndex()) {
                         ensureActive()
-                        val keyFrames = extractKeyframes(context, video.uri, limit = 86400)
 
-                        for (keyFrame in keyFrames) {
+                        val savedFrames = mutableListOf<Pair<Long, String>>()
+
+                        forEachKeyframe(
+                            context = context,
+                            uri = video.uri,
+                            limit = 86400
+                        ) { timeUs, bitmap ->
                             ensureActive()
-                            val keyFramePath = saveBitmapToInternalStorage(context, keyFrame.bitmap) ?: continue
 
-                            val keyFrameId = UUID.randomUUID()
-                            val realTime = addMicrosecondsToLong(video.startTimeText, keyFrame.timeUs)
-
-                            val newKeyFrame = KeyFrameEntity(
-                                id = keyFrameId,
-                                keyFramePath = keyFramePath,
-                                moviePath = video.uri.toString(),
-                                realTime = realTime,
-                                fileTime = keyFrame.timeUs
+                            val path = saveBitmapToInternalStorage(
+                                context,
+                                bitmap
                             )
-                            keyFrameDao.insertKeyFrames(listOf(newKeyFrame))
 
-                            insertedEntities.add(newKeyFrame)
+                            if (path != null) {
+                                savedFrames.add(timeUs to path)
+                            }
                         }
 
-                        val phase1Progress = (index + 1).toFloat() / videoTotal
-                        _progress.value = phase1Progress * 0.5f
+                        val keyFrameEntities = mutableListOf<KeyFrameEntity>()
+                        for ((timeUs, path) in savedFrames) {
+                            ensureActive()
+
+                            val entity = KeyFrameEntity(
+                                id = UUID.randomUUID(),
+                                keyFramePath = path,
+                                moviePath = video.uri.toString(),
+                                realTime = addMicrosecondsToLong(
+                                    video.startTimeText,
+                                    timeUs
+                                ),
+                                fileTime = timeUs
+                            )
+                            keyFrameEntities.add(entity)
+                        }
+
+                        if (keyFrameEntities.isNotEmpty()) {
+                            keyFrameDao.insertKeyFrames(keyFrameEntities)
+                        }
+
+                        _progress.value = 0.2f * (index + 1).toFloat() / videoTotal
                     }
 
-                    // --- フェーズ 2: 保存したデータに対する別の処理 ---
-                    val additionalTotal = insertedEntities.size
+                    if (videoInfos.isEmpty()) {
+                        _progress.value = 1f
+                        return@withContext
+                    }
 
-                    if (additionalTotal > 0) {
-                        for ((index, entity) in insertedEntities.withIndex()) {
-                            ensureActive()
-                            saveCropImage(entity)
+                    // フェーズ 2: 物体検出 Worker (MLWorker) の起動と進捗監視
+                    val workManager = WorkManager.getInstance(context)
+                    val request = OneTimeWorkRequestBuilder<MLWorker>()
+                        .build()
 
-                            val phase2Progress = (index + 1).toFloat() / additionalTotal
-                            _progress.value = 0.5f + (phase2Progress * 0.5f)
+                    workManager.enqueue(request)
+
+                    val finishedWorkInfo = workManager
+                        .getWorkInfoByIdFlow(request.id)
+                        .first { workInfo ->
+                            if (workInfo != null) {
+                                val workerProgress = workInfo.progress
+                                    .getInt("progress", 0)
+                                    .coerceIn(0, 100) / 100f
+
+                                _progress.value = 0.2f + workerProgress * 0.8f
+                            }
+
+                            workInfo?.state?.isFinished == true
+                        } ?: error("WorkInfoを取得できませんでした")
+
+                    when (finishedWorkInfo.state) {
+                        WorkInfo.State.SUCCEEDED -> {
+                            _progress.value = 1f
                         }
-                    } else {
-                        _progress.value = 1.0f
+
+                        WorkInfo.State.FAILED -> {
+                            _errorMessage.value = "画像認識に失敗しました。"
+                        }
+
+                        WorkInfo.State.CANCELLED -> {
+                            _errorMessage.value = "画像認識がキャンセルされました。"
+                        }
+
+                        else -> Unit
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                e.printStackTrace()
+                _errorMessage.value = e.message ?: "処理中にエラーが発生しました。"
             } finally {
                 _isLoading.value = false
             }
         }
-    }
-
-    // 画像認識処理のダミー関数
-    private suspend fun saveCropImage(/*clopImageDao: ClopImageDao,*/ entity: KeyFrameEntity) {
-        val list = listOf("wallet", "headphone", "key", "smart phone", "umbrella")
-        val dummyClopEntity = CropImageEntity(
-            id = UUID.randomUUID(),
-            className = list.random(),
-            score = 1.0,
-            color = /*BaseColor*/ImageColor.entries.random ().id,
-            //bboxPoint = BPoint (0f, 0f, 500f, 500f),
-            bboxLeft = 0,
-            bboxTop = 0,
-            bboxRight = 500,
-            bboxBottom = 500,
-            realTime = entity.realTime,
-            fileTime = entity.fileTime,
-            keyFramePath = entity.keyFramePath,
-            idKeyFrame = entity.id
-        )
-
-        // データベースに格納
-        cropImageDao.insertCropImages(listOf(dummyClopEntity))
     }
 }
