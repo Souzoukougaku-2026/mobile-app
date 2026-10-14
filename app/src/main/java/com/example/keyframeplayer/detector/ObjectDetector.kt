@@ -149,7 +149,6 @@ class ObjectDetector(private val context: Context) {
 
         logTime("7_recycle") {
             letterboxedBitmap.recycle()
-            originalBitmap.recycle()
         }
 
         val totalMs = (System.nanoTime() - totalStart) / 1_000_000.0

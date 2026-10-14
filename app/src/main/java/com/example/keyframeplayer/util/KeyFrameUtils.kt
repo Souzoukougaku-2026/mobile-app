@@ -170,8 +170,11 @@ object KeyFrameUtils {
         pattern: String = "yyyy/MM/dd HH:mm:ss.SSS"
     ): Long {
         return try {
-            val formatter = DateTimeFormatter.ofPattern(pattern)
-            val localDateTime = LocalDateTime.parse(baseTimeText, formatter)
+            val localDateTime = try {
+                LocalDateTime.parse(baseTimeText, DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss.SSS"))
+            } catch (e: Exception) {
+                LocalDateTime.parse(baseTimeText, DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"))
+            }
 
             val calculatedDateTime = localDateTime.plus(
                 microsecondsToAdd,

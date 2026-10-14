@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.room.Room
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
@@ -41,8 +42,8 @@ class MLWorker(
         setForeground(createForegroundInfo())
 
         // データベースの取得
-        val db = androidx.room.Room.databaseBuilder(
-            context,
+        val db = Room.databaseBuilder(
+            context.applicationContext,
             AppDatabase::class.java,
             "crop_image_db"
         ).fallbackToDestructiveMigration().build()
@@ -65,8 +66,8 @@ class MLWorker(
                 val bitmap = BitmapFactory.decodeFile(keyFrame.keyFramePath)
                 if (bitmap != null) {
                     try {
-                        val detections = detector.runDetect(bitmap)
                         val dominantColor = bitmap.detectDominantColor()
+                        val detections = detector.runDetect(bitmap)
 
                         val cropImageEntities = detections.map { detection ->
                             CropImageEntity(
