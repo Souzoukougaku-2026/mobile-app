@@ -3,111 +3,154 @@ package com.example.keyframeplayer.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.keyframeplayer.util.KeyFrameUtils.addMicrosecondsToLong
-import com.example.keyframeplayer.util.KeyFrameUtils.extractKeyframes
-import com.example.keyframeplayer.util.KeyFrameUtils.saveBitmapToInternalStorage
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.example.keyframeplayer.data.AppDatabase
-import com.example.keyframeplayer.data.ClopImageDao
-import com.example.keyframeplayer.data.ClopImageEntity
-import com.example.keyframeplayer.data.BaseColor
-import com.example.keyframeplayer.data.BPoint
 import com.example.keyframeplayer.data.KeyFrameEntity
+import com.example.keyframeplayer.util.KeyFrameUtils.addMicrosecondsToLong
+import com.example.keyframeplayer.util.KeyFrameUtils.forEachKeyframe
+import com.example.keyframeplayer.util.KeyFrameUtils.saveBitmapToInternalStorage
 import com.example.keyframeplayer.util.VideoInfo
+import com.example.wasuremono_prj.joint.MLWorker
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class ImageRecognitionViewModel(application: Application) : AndroidViewModel(application) {
+class ImageRecognitionViewModel(
+    application: Application
+) : AndroidViewModel(application) {
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
 
+    // 0.0f〜1.0f
     private val _progress = MutableStateFlow(0f)
     val progress = _progress.asStateFlow()
 
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage = _errorMessage.asStateFlow()
+
     fun startProcessing(videoInfos: List<VideoInfo>) {
+        if (_isLoading.value) return
+
         viewModelScope.launch {
             _isLoading.value = true
             _progress.value = 0f
+            _errorMessage.value = null
 
             val context = getApplication<Application>().applicationContext
 
             try {
                 withContext(Dispatchers.IO) {
-                    val database = AppDatabase.getDatabase(context)
-                    val keyFrameDao = database.keyFrameDao()
-                    // 1. 既存のデータベースからクロップ用のDaoを取得
-                    val clopImageDao = database.clopImageDao()
-
+                    val keyFrameDao =
+                        AppDatabase.getDatabase(context).keyFrameDao()
                     val videoTotal = videoInfos.size
-                    val insertedEntities = mutableListOf<KeyFrameEntity>()
 
-                    // --- フェーズ 1: 動画の解析とDB保存 ---
+                    // フェーズ1: キーフレーム取得・保存・DB登録
                     for ((index, video) in videoInfos.withIndex()) {
                         ensureActive()
-                        val keyFrames = extractKeyframes(context, video.uri, limit = 86400)
 
-                        for (keyFrame in keyFrames) {
+                        val savedFrames = mutableListOf<Pair<Long, String>>()
+
+                        forEachKeyframe(
+                            context = context,
+                            uri = video.uri,
+                            limit = 86400
+                        ) { timeUs, bitmap ->
                             ensureActive()
-                            val keyFramePath = saveBitmapToInternalStorage(context, keyFrame.bitmap) ?: continue
 
-                            // UUIDはEntity生成時に自動で初期化されます（id = UUID.randomUUID()）
-                            val newKeyFrame = KeyFrameEntity(
-                                keyFramePath = keyFramePath,
-                                moviePath = video.uri,
-                                realTime = addMicrosecondsToLong(video.startTimeText, keyFrame.timeUs),
-                                fileTime = keyFrame.timeUs
+                            val path = saveBitmapToInternalStorage(
+                                context,
+                                bitmap
                             )
-                            keyFrameDao.insertKeyFrame(newKeyFrame)
 
-                            // メモリ上に保持するリストに追加（これでUUIDが確定した状態のEntityが残ります）
-                            insertedEntities.add(newKeyFrame)
+                            if (path != null) {
+                                savedFrames.add(timeUs to path)
+                            }
                         }
 
-                        val phase1Progress = (index + 1).toFloat() / videoTotal
-                        _progress.value = phase1Progress * 0.5f
+                        for ((timeUs, path) in savedFrames) {
+                            ensureActive()
+
+                            val entity = KeyFrameEntity(
+                                keyFramePath = path,
+                                moviePath = video.uri,
+                                realTime = addMicrosecondsToLong(
+                                    video.startTimeText,
+                                    timeUs
+                                ),
+                                fileTime = timeUs
+                            )
+
+                            keyFrameDao.insertKeyFrame(entity)
+                        }
+
+                        // フェーズ1は全体の20%
+                        _progress.value =
+                            0.2f * (index + 1).toFloat() / videoTotal
                     }
 
-                    // --- フェーズ 2: 保存したデータに対する別の処理 ---
-                    val additionalTotal = insertedEntities.size
+                    // 入力動画が空ならWorkerを起動する必要はない
+                    if (videoInfos.isEmpty()) {
+                        _progress.value = 1f
+                        return@withContext
+                    }
 
-                    if (additionalTotal > 0) {
-                        for ((index, entity) in insertedEntities.withIndex()) {
-                            ensureActive()
+                    // フェーズ2: 物体検出Worker
+                    val workManager = WorkManager.getInstance(context)
+                    val request = OneTimeWorkRequestBuilder<MLWorker>()
+                        .build()
 
-                            // 2. ループ内でダミーデータ保存関数を呼び出す
-                            saveCropImage(clopImageDao, entity)
+                    workManager.enqueue(request)
 
-                            val phase2Progress = (index + 1).toFloat() / additionalTotal
-                            _progress.value = 0.5f + (phase2Progress * 0.5f)
+                    // Workが成功・失敗・キャンセルのいずれかになるまで監視
+                    val finishedWorkInfo = workManager
+                        .getWorkInfoByIdFlow(request.id)
+                        .first { workInfo ->
+                            if (workInfo != null) {
+                                val workerProgress =
+                                    workInfo.progress
+                                        .getInt("progress", 0)
+                                        .coerceIn(0, 100) / 100f
+
+                                // フェーズ2は全体の80%
+                                _progress.value =
+                                    0.2f + workerProgress * 0.8f
+                            }
+
+                            workInfo?.state?.isFinished == true
+                        } ?: error("WorkInfoを取得できませんでした")
+
+                    when (finishedWorkInfo.state) {
+                        WorkInfo.State.SUCCEEDED -> {
+                            _progress.value = 1f
                         }
-                    } else {
-                        _progress.value = 1.0f
+
+                        WorkInfo.State.FAILED -> {
+                            _errorMessage.value = "画像認識に失敗しました。"
+                        }
+
+                        WorkInfo.State.CANCELLED -> {
+                            _errorMessage.value = "画像認識がキャンセルされました。"
+                        }
+
+                        else -> Unit
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                e.printStackTrace()
+                _errorMessage.value =
+                    e.message ?: "処理中にエラーが発生しました。"
             } finally {
                 _isLoading.value = false
             }
         }
-    }
-
-    // 画像認識処理のダミー関数
-    private suspend fun saveCropImage(clopImageDao: ClopImageDao, entity: KeyFrameEntity) {
-        val list = listOf("wallet", "headphone", "key", "smart phone", "umbrella")
-        val dummyClopEntity = ClopImageEntity(
-            classname = list.random(),
-            score = 1f,
-            color = BaseColor.entries.random (),
-            bboxPoint = BPoint (0f, 0f, 500f, 500f),
-            idKeyFrame = entity.id
-        )
-
-        // データベースに格納
-        clopImageDao.insertClopImage(dummyClopEntity)
     }
 }

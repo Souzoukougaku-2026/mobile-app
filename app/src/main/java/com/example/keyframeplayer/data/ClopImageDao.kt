@@ -12,7 +12,7 @@ interface ClopImageDao {
 
     // 挿入(上書き)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertClopImage(clopImage: ClopImageEntity)
+    suspend fun insertClopImage(clopImage: List<ClopImageEntity>)
 
     // 検索(keyFrameId)
     @Query("SELECT * FROM clopimages WHERE idKeyFrame = :keyFrameId")

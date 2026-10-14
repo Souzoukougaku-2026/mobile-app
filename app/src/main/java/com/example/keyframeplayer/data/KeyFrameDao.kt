@@ -15,4 +15,9 @@ interface KeyFrameDao {
     // データの検索(keyFrameIDより)
     @Query("SELECT * FROM keyFrames WHERE id = :keyFrameID")
     suspend fun getKeyFrameById(keyFrameID: UUID): KeyFrameEntity?
+
+    // ID全取得
+    @Query("SELECT id FROM keyframes")
+    suspend fun getKeyFrameIds(): List<UUID>
+
 }

@@ -3,24 +3,18 @@ package com.example.keyframeplayer.detector
 import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.palette.graphics.Palette
+import com.example.keyframeplayer.data.BaseColor
 
-// 1. 色を表すEnum
-enum class MyColor {
-    RED, ORANGE, YELLOW, GREEN, BLUE, PURPLE, PINK,
-    BLACK, WHITE, GRAY, UNKNOWN
-}
-
-
-fun Bitmap.detectDominantColor(): MyColor {
+fun Bitmap.detectDominantColor(): BaseColor {
     val palette = Palette.from(this)
         .generate()
 
-    val rgb = palette.dominantSwatch?.rgb ?: return MyColor.UNKNOWN
+    val rgb = palette.dominantSwatch?.rgb ?: return BaseColor.UNKNOWN
 
     return classifyColor(rgb)
 }
 
-private fun classifyColor(rgb: Int): MyColor {
+private fun classifyColor(rgb: Int): BaseColor {
     val hsv = FloatArray(3)
     Color.colorToHSV(rgb, hsv)
 
@@ -30,18 +24,18 @@ private fun classifyColor(rgb: Int): MyColor {
 
     return when {
         // 無彩色の判定（黒・白・灰色）
-        v < 0.15 -> MyColor.BLACK
-        v > 0.95 -> MyColor.WHITE
-        s < 0.2 -> MyColor.GRAY
+        v < 0.15 -> BaseColor.BLACK
+        v > 0.95 -> BaseColor.WHITE
+        s < 0.2 -> BaseColor.GRAY
 
         // 有彩色の判定（色相環の角度に基づく）
-        h in 0.0..15.0 || h in 330.0..360.0 -> MyColor.RED
-        h in 15.0..45.0 -> MyColor.ORANGE
-        h in 45.0..70.0 -> MyColor.YELLOW
-        h in 70.0..160.0 -> MyColor.GREEN
-        h in 160.0..250.0 -> MyColor.BLUE
-        h in 250.0..290.0 -> MyColor.PURPLE
-        h in 290.0..330.0 -> MyColor.PINK
-        else -> MyColor.UNKNOWN
+        h in 0.0..15.0 || h in 330.0..360.0 -> BaseColor.RED
+        h in 15.0..45.0 -> BaseColor.ORANGE
+        h in 45.0..70.0 -> BaseColor.YELLOW
+        h in 70.0..160.0 -> BaseColor.GREEN
+        h in 160.0..250.0 -> BaseColor.BLUE
+        h in 250.0..290.0 -> BaseColor.PURPLE
+        h in 290.0..330.0 -> BaseColor.PINK
+        else -> BaseColor.UNKNOWN
     }
 }

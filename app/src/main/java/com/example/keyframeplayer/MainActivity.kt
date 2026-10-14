@@ -14,10 +14,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
+import com.example.keyframeplayer.data.AppDatabase
 import com.example.keyframeplayer.ui.screen.DirectoryManagementScreen
 import com.example.keyframeplayer.ui.theme.KeyFramePlayerTheme
 import com.example.keyframeplayer.ui.viewmodel.VideoManagementViewModel
 import com.example.keyframeplayer.util.VideoUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -61,14 +66,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        /*
         lifecycleScope.launch {
             // バックグラウンド（IO）で、定義済みのクリア関数を呼び出す
             withContext(Dispatchers.IO) {
                 AppDatabase.clearDatabase(this@MainActivity)
             }
         }
-         */
 
         // 画像が保存されている専用の「images」フォルダを指定する
         val imageDir = File(this.filesDir, "images")

@@ -14,162 +14,156 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.UUID
-
-/**
- * キーフレーム（時間とBitmap）を保持するシンプルなデータクラス
- */
-data class KeyFrameResult(
-    val timeUs: Long,
-    val bitmap: Bitmap
-)
+import android.graphics.BitmapFactory
 
 object KeyFrameUtils {
 
-
     /**
-     * 動画のURIからキーフレーム情報を一括で取得するメイン関数
-     *
-     * @param context コンテキスト
-     * @param videoUri 動画のUri
-     * @param limit 抽出する最大枚数（デフォルト: 10枚）
+     * 動画からキーフレームを1枚ずつ取得し、コールバックに渡す。
+     * Bitmapはコールバック実行後にこの関数内で解放する。
      */
+    suspend fun forEachKeyframe(
+        context: Context,
+        uri: Uri,
+        limit: Int = 10,
+        onFrame: suspend (timeUs: Long, bitmap: Bitmap) -> Unit
+    ) {
+        val timesUs = getKeyframeTimes(context, uri)
+        if (timesUs.isEmpty()) return
 
-    fun extractKeyframes(context: Context, videoUri: Uri, limit: Int = 10): List<KeyFrameResult> {
-        // 1. まず動画から同期フレーム（キーフレーム）のタイムスタンプをすべて集める
-        val allTimesUs = getKeyframeTimes(context, videoUri)
+        val retriever = MediaMetadataRetriever()
 
-        // 2. 指定された上限数（limit）に絞って、各タイムスタンプのBitmap（画像）を取得する
-        return getKeyframeItems(context, videoUri, allTimesUs, limit)
+        try {
+            try {
+                retriever.setDataSource(context, uri)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                return
+            }
+
+            for (timeUs in timesUs.take(limit)) {
+                val bitmap = retriever.getFrameAtTime(
+                    timeUs,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                ) ?: continue
+
+                try {
+                    onFrame(timeUs, bitmap)
+                } finally {
+                    if (!bitmap.isRecycled) {
+                        bitmap.recycle()
+                    }
+                }
+            }
+        } finally {
+            retriever.release()
+        }
     }
 
     /**
-     * 動画内のすべてのキーフレーム（Iフレーム）のタイムスタンプ（マイクロ秒）を取得する
+     * 動画内のキーフレームのタイムスタンプを取得する。
      */
     private fun getKeyframeTimes(context: Context, uri: Uri): List<Long> {
         val extractor = MediaExtractor()
-        try {
+
+        return try {
             extractor.setDataSource(context, uri, null)
+
+            var videoTrackIndex = -1
+
+            for (i in 0 until extractor.trackCount) {
+                val mime = extractor.getTrackFormat(i)
+                    .getString(MediaFormat.KEY_MIME)
+
+                if (mime?.startsWith("video/") == true) {
+                    videoTrackIndex = i
+                    break
+                }
+            }
+
+            if (videoTrackIndex == -1) {
+                return emptyList()
+            }
+
+            extractor.selectTrack(videoTrackIndex)
+
+            val times = mutableListOf<Long>()
+
+            extractor.seekTo(
+                0L,
+                MediaExtractor.SEEK_TO_CLOSEST_SYNC
+            )
+
+            var currentSampleTime = extractor.sampleTime
+
+            if (currentSampleTime >= 0) {
+                times.add(currentSampleTime)
+            }
+
+            while (currentSampleTime >= 0) {
+                extractor.seekTo(
+                    currentSampleTime + 1,
+                    MediaExtractor.SEEK_TO_NEXT_SYNC
+                )
+
+                val nextSampleTime = extractor.sampleTime
+
+                if (nextSampleTime < 0 || nextSampleTime <= currentSampleTime) {
+                    break
+                }
+
+                times.add(nextSampleTime)
+                currentSampleTime = nextSampleTime
+            }
+
+            times
         } catch (e: Exception) {
             e.printStackTrace()
-            return emptyList()
-        }
-
-        // ビデオトラックのインデックスを探す
-        var videoTrackIndex = -1
-        for (i in 0 until extractor.trackCount) {
-            val mime = extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)
-            if (mime?.startsWith("video/") == true) {
-                videoTrackIndex = i
-                break
-            }
-        }
-
-        if (videoTrackIndex == -1) {
+            emptyList()
+        } finally {
             extractor.release()
-            return emptyList()
         }
-
-        extractor.selectTrack(videoTrackIndex)
-        val times = mutableListOf<Long>()
-
-        // 最初（0秒時点）のキーフレームを取得して登録
-        extractor.seekTo(0L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-        var currentSampleTime = extractor.sampleTime
-
-        if (currentSampleTime >= 0) {
-            times.add(currentSampleTime)
-        }
-
-        // キーフレームからキーフレームへ直接ジャンプするループ
-        while (currentSampleTime >= 0) {
-            // 現在のタイムスタンプの「直後」のキーフレームへシーク
-            extractor.seekTo(currentSampleTime + 1, MediaExtractor.SEEK_TO_NEXT_SYNC)
-            val nextSampleTime = extractor.sampleTime
-
-            // 同じ位置に戻ってしまった、または終端に達した場合はループを抜ける
-            if (nextSampleTime < 0 || nextSampleTime <= currentSampleTime) {
-                break
-            }
-
-            times.add(nextSampleTime)
-            currentSampleTime = nextSampleTime
-        }
-
-        extractor.release()
-        return times
     }
 
     /**
-     * 指定されたタイムスタンプのリストを元に、MediaMetadataRetrieverを使ってBitmapを抽出する
+     * Bitmapをアプリ内部ストレージにPNG形式で保存し、絶対パスを返す。
      */
-    private fun getKeyframeItems(
+    fun saveBitmapToInternalStorage(
         context: Context,
-        uri: Uri,
-        timesUs: List<Long>,
-        limit: Int
-    ): List<KeyFrameResult> {
-        val retriever = MediaMetadataRetriever()
-        try {
-            retriever.setDataSource(context, uri)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return emptyList()
+        bitmap: Bitmap
+    ): String? {
+        val directory = File(context.filesDir, "images")
+
+        if (!directory.exists() && !directory.mkdirs()) {
+            return null
         }
 
-        val items = mutableListOf<KeyFrameResult>()
+        val file = File(directory, "${UUID.randomUUID()}.png")
 
-        // リミット件数分だけループを回してBitmapを生成
-        for (timeUs in timesUs.take(limit)) {
-            retriever.getFrameAtTime(
-                timeUs,
-                MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-            )?.let { bitmap ->
-                items.add(KeyFrameResult(timeUs, bitmap))
-            }
-        }
-
-        retriever.release()
-        return items
-    }
-
-    fun saveBitmapToInternalStorage(context: Context, bitmap: Bitmap): String? {
-        // 1. アプリ固有の内部ストレージのディレクトリを取得する
-        //    filesDir の中に「images」という専用フォルダのパスを指定する
-        val baseDirectory = context.filesDir
-        val directory = File(baseDirectory, "images")
-
-        // 2. 「images」フォルダが存在しない場合は、ここで自動作成する
-        if (!directory.exists()) {
-            directory.mkdirs()
-        }
-
-        val fileName = UUID.randomUUID().toString()
-
-        // 3. 保存するファイルを作成する
-        val file = File(directory, fileName)
-
-        var fileOutputStream: FileOutputStream? = null
         return try {
-            // 4. 出力ストリームを開いてBitmapを圧縮・書き込みする
-            fileOutputStream = FileOutputStream(file)
+            FileOutputStream(file).use { outputStream ->
+                val saved = bitmap.compress(
+                    Bitmap.CompressFormat.PNG,
+                    100,
+                    outputStream
+                )
 
-            // PNG形式（劣化なし）で保存。JPEGの場合は Bitmap.CompressFormat.JPEG
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fileOutputStream)
+                if (!saved) {
+                    throw IOException("Bitmapの保存に失敗しました")
+                }
+            }
 
-            // 5. 保存に成功したら、絶対パスを文字列として返す
             file.absolutePath
         } catch (e: IOException) {
             e.printStackTrace()
-            null // 失敗した場合はnullを返す
-        } finally {
-            try {
-                fileOutputStream?.close()
-            } catch (e: IOException) {
-                e.printStackTrace()
-            }
+            file.delete()
+            null
         }
     }
 
+    /**
+     * 基準日時にマイクロ秒を加算し、ミリ秒のLong値で返す。
+     */
     fun addMicrosecondsToLong(
         baseTimeText: String,
         microsecondsToAdd: Long,
@@ -177,20 +171,39 @@ object KeyFrameUtils {
     ): Long {
         return try {
             val formatter = DateTimeFormatter.ofPattern(pattern)
-
-            // 1. 文字列を LocalDateTime にパース
             val localDateTime = LocalDateTime.parse(baseTimeText, formatter)
 
-            // 2. マイクロ秒を加算
-            val calculatedDateTime = localDateTime.plus(microsecondsToAdd, ChronoUnit.MICROS)
+            val calculatedDateTime = localDateTime.plus(
+                microsecondsToAdd,
+                ChronoUnit.MICROS
+            )
 
-            // 3. タイムゾーン（端末のデフォルト）を考慮して Long 型（ミリ秒）に変換
-            val zoneId = ZoneId.systemDefault()
-            calculatedDateTime.atZone(zoneId).toInstant().toEpochMilli()
-
+            calculatedDateTime
+                .atZone(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli()
         } catch (e: Exception) {
             e.printStackTrace()
-            0L // エラー時のフォールバック
+            0L
         }
     }
+
+    /**
+     * PNG画像の絶対パスからBitmapを取得する
+     *
+     * @param absolutePath 画像ファイルの絶対パス
+     * @return デコードされたBitmap（失敗時、またはファイルが存在しない場合はnull）
+     */
+    fun loadBitmapFromPath(absolutePath: String): Bitmap? {
+        val file = File(absolutePath)
+
+        // ファイルが存在し、かつ読み取り可能かチェック
+        if (!file.exists() || !file.isFile) {
+            return null
+        }
+
+        // パスからBitmapを生成して返す
+        return BitmapFactory.decodeFile(file.absolutePath)
+    }
+
 }
