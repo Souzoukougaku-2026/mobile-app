@@ -35,6 +35,9 @@ interface CropImageDao {
     @Query("SELECT * FROM CropImage WHERE id = :id")
     suspend fun getCropImageById(id: UUID): CropImageEntity?
 
+    @Query("UPDATE CropImage SET isLiked = :isLiked WHERE id = :id")
+    suspend fun updateLikedState(id: UUID, isLiked: Boolean)
+
     @Query("DELETE FROM CropImage")
     suspend fun clearCropImages()
 }

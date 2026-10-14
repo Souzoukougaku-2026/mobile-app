@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -375,6 +377,7 @@ fun GraphControlArea(
     onTimeScaleSelected: (TimeScale) -> Unit,
     onClassFilterSelected: (String?) -> Unit,
     onColorFilterSelected: (ImageColor?) -> Unit,
+    onLikedFilterToggled: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var classMenuExpanded by remember { mutableStateOf(false) }
@@ -412,10 +415,10 @@ fun GraphControlArea(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // 2. フィルター（クラス & 色）のドロップダウンメニュー
+        // 2. フィルター（クラス & 色 & いいね）
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // クラスフィルター
@@ -495,6 +498,20 @@ fun GraphControlArea(
                     }
                 }
             }
+
+            // ❤️ いいねトグルフィルターボタン
+            FilterChip(
+                selected = uiState.isLikedFilterOnly,
+                onClick = onLikedFilterToggled,
+                label = {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = "Favorite Filter",
+                        tint = if (uiState.isLikedFilterOnly) Color(0xFFE53935) else Color.Gray,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            )
         }
     }
 }

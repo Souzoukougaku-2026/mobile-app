@@ -14,7 +14,8 @@ data class CropImage(
     val realTime: Long,
     val fileTime: Int,
     val keyFramePath: String,
-    val idKeyFrame: UUID
+    val idKeyFrame: UUID,
+    val isLiked: Boolean = false
 ) {
     companion object {
         const val CLASS_WALLET = "wallet"

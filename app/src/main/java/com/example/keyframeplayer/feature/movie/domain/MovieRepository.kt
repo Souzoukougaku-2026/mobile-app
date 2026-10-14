@@ -15,5 +15,6 @@ interface MovieRepository {
     fun getVideosOrdered(): Flow<List<VideoEntity>>
     suspend fun getCropImageById(id: UUID): CropImage?
     suspend fun getKeyFrameById(id: UUID): KeyFrame?
+    suspend fun updateCropImageLiked(id: UUID, isLiked: Boolean)
     suspend fun ensureVideoEntitiesExist()
 }

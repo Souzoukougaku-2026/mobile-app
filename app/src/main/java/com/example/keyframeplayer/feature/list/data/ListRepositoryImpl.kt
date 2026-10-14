@@ -59,7 +59,8 @@ class ListRepositoryImpl @Inject constructor(
             realTime = realTime,
             fileTime = fileTime.toInt(),
             keyFramePath = keyFramePath,
-            idKeyFrame = idKeyFrame
+            idKeyFrame = idKeyFrame,
+            isLiked = isLiked
         )
     }
 
@@ -76,7 +77,8 @@ class ListRepositoryImpl @Inject constructor(
             realTime = realTime,
             fileTime = fileTime.toLong(),
             keyFramePath = keyFramePath,
-            idKeyFrame = idKeyFrame
+            idKeyFrame = idKeyFrame,
+            isLiked = isLiked
         )
     }
 

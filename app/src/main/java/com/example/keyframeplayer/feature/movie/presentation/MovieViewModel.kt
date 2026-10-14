@@ -215,19 +215,32 @@ class MovieViewModel @Inject constructor(
         recalculateGraphBars()
     }
 
+    fun onLikedFilterToggled() {
+        _uiState.update { it.copy(isLikedFilterOnly = !it.isLikedFilterOnly) }
+        recalculateGraphBars()
+    }
+
+    fun onKeyframeLikedStateChanged(id: UUID, isLiked: Boolean) {
+        viewModelScope.launch {
+            repository.updateCropImageLiked(id, isLiked)
+        }
+    }
+
     private fun recalculateGraphBars() {
         val state = _uiState.value
         val keyframes = state.keyframes
         val timeScale = state.selectedTimeScale
         val classFilter = state.selectedClassFilter
         val colorFilter = state.selectedColorFilter
+        val likedFilterOnly = state.isLikedFilterOnly
         val minRealTimeMs = state.minRealTimeMs
         val totalRealDurationMs = state.totalRealDurationMs
 
-        // 1. 条件で CropImage を絞り込み
+        // 1. 条件（クラス・色・いいね）で CropImage を絞り込み
         val filtered = keyframes.filter { item ->
             (classFilter == null || item.className == classFilter) &&
-            (colorFilter == null || item.color == colorFilter)
+            (colorFilter == null || item.color == colorFilter) &&
+            (!likedFilterOnly || item.isLiked)
         }
 
         // 2. 1バーあたりの時間幅 (画面1幅にちょうど90本のバーが入るように設定)

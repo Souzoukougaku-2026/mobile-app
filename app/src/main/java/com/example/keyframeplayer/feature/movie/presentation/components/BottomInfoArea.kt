@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,10 +32,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.domain.model.CropImage
+import com.example.keyframeplayer.core.domain.model.ImageColor
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import kotlin.math.abs
 
 @Composable
@@ -42,25 +45,46 @@ fun BottomInfoArea(
     currentTime: Float,
     activeKeyframe: CropImage? = null,
     keyframes: List<CropImage> = emptyList(),
+    selectedClassFilter: String? = null,
+    selectedColorFilter: ImageColor? = null,
+    isLikedFilterOnly: Boolean = false,
     realTimeMs: Long = 0L,
     onSwipeLeft: (CropImage?) -> Unit = {},
     onSwipeRight: (CropImage?) -> Unit = {},
+    onKeyframeLikedStateChanged: (UUID, Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    val cardList = remember(activeKeyframe, keyframes) {
-        if (activeKeyframe != null) {
-            val rest = keyframes.filter { it.id != activeKeyframe.id }
-            listOf(activeKeyframe) + rest
-        } else {
-            keyframes
+    // 1. クラス & 色 & いいね フィルター適用
+    val filteredKeyframes = remember(keyframes, selectedClassFilter, selectedColorFilter, isLikedFilterOnly) {
+        keyframes.filter { item ->
+            (selectedClassFilter == null || item.className == selectedClassFilter) &&
+            (selectedColorFilter == null || item.color == selectedColorFilter) &&
+            (!isLikedFilterOnly || item.isLiked)
         }
     }
 
-    var currentIndex by remember(cardList) { mutableIntStateOf(0) }
+    // 2. 左スワイプ (NOPE) で対象外（除外）にした画像 ID のセット
+    var excludedIds by remember { mutableStateOf(setOf<UUID>()) }
+
+    // フィルター条件変更時は除外状態をリセット
+    LaunchedEffect(selectedClassFilter, selectedColorFilter, isLikedFilterOnly) {
+        excludedIds = emptySet()
+    }
+
+    // 3. 現在の動画再生時刻 (realTimeMs) に近いものを優先的にソート & 未除外のみ抽出
+    val visibleCardList = remember(filteredKeyframes, realTimeMs, excludedIds) {
+        val available = filteredKeyframes.filter { it.id !in excludedIds }
+        if (realTimeMs > 0L) {
+            available.sortedBy { abs(it.realTime - realTimeMs) }
+        } else {
+            available
+        }
+    }
+
     var isFlipped by remember { mutableStateOf(false) }
 
-    val currentCard = cardList.getOrNull(currentIndex)
-    val nextCard = cardList.getOrNull(currentIndex + 1)
+    val currentCard = visibleCardList.firstOrNull()
+    val nextCard = visibleCardList.getOrNull(1)
 
     Column(
         modifier = modifier
@@ -76,15 +100,17 @@ fun BottomInfoArea(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "🔥 表:画像 / 裏:データ Tinder カード",
+                text = "🔥 Tinder カード (残 ${visibleCardList.size}件)",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
-            Text(
-                text = if (isFlipped) "📄 裏面 (詳細データ)" else "🖼️ 表面 (画像)",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (visibleCardList.isNotEmpty()) {
+                Text(
+                    text = if (isFlipped) "📄 裏面 (詳細データ)" else "🖼️ 表面 (画像)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         // カードスタック領域
@@ -94,13 +120,10 @@ fun BottomInfoArea(
                 .height(260.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (cardList.isEmpty() && activeKeyframe == null) {
-                // デフォルトカード
-                DefaultFlippableTinderCard(
-                    currentTime = currentTime,
-                    realTimeMs = realTimeMs,
-                    isFlipped = isFlipped,
-                    onToggleFlip = { isFlipped = !isFlipped }
+            if (visibleCardList.isEmpty()) {
+                // 画像がなくなった場合の表示
+                EmptyTinderCard(
+                    onReset = { excludedIds = emptySet() }
                 )
             } else {
                 // 背面（2枚目）のカード
@@ -122,7 +145,7 @@ fun BottomInfoArea(
                     )
                 }
 
-                // 最前面（1枚目）のカード (フリップ & スワイプ可能)
+                // 最前面（1枚目）のカード
                 if (currentCard != null) {
                     SwipeableFlippableTinderCard(
                         cropImage = currentCard,
@@ -131,14 +154,17 @@ fun BottomInfoArea(
                         isFlipped = isFlipped,
                         onToggleFlip = { isFlipped = !isFlipped },
                         onSwipedLeft = {
+                            // 左スワイプ: 対象外にして除外リストに追加
+                            excludedIds = excludedIds + currentCard.id
                             onSwipeLeft(currentCard)
                             isFlipped = false
-                            if (currentIndex < cardList.lastIndex) currentIndex++ else currentIndex = 0
                         },
                         onSwipedRight = {
+                            // 右スワイプ: いいね(DB保存) & シーク連動
+                            excludedIds = excludedIds + currentCard.id
+                            onKeyframeLikedStateChanged(currentCard.id, true)
                             onSwipeRight(currentCard)
                             isFlipped = false
-                            if (currentIndex < cardList.lastIndex) currentIndex++ else currentIndex = 0
                         }
                     )
                 }
@@ -147,23 +173,28 @@ fun BottomInfoArea(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Tinder アクションボタン群 (❌ DISLIKE / 🔄 FLIP / ❤️ LIKE)
+        // Tinder アクションボタン群 (❌ DISLIKE / 🔄 FLIP または RESET / ❤️ LIKE)
         TinderActionButtons(
+            hasCards = visibleCardList.isNotEmpty(),
             onDislike = {
                 if (currentCard != null) {
+                    excludedIds = excludedIds + currentCard.id
                     onSwipeLeft(currentCard)
                     isFlipped = false
-                    if (currentIndex < cardList.lastIndex) currentIndex++ else currentIndex = 0
                 }
             },
             onFlip = {
                 isFlipped = !isFlipped
             },
+            onReset = {
+                excludedIds = emptySet()
+            },
             onLike = {
                 if (currentCard != null) {
+                    excludedIds = excludedIds + currentCard.id
+                    onKeyframeLikedStateChanged(currentCard.id, true)
                     onSwipeRight(currentCard)
                     isFlipped = false
-                    if (currentIndex < cardList.lastIndex) currentIndex++ else currentIndex = 0
                 }
             }
         )
@@ -314,7 +345,7 @@ fun KeyframeFlippableCard(
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 6.dp)
     ) {
         if (rotationY <= 90f) {
-            // --- 表面 (Front): 画面いっぱいのクロップ画像 ---
+            // --- 表面 (Front): クロップ画像 ---
             Box(modifier = Modifier.fillMaxSize()) {
                 ZoomableImage(
                     imagePath = cropImage.keyFramePath,
@@ -416,7 +447,7 @@ fun KeyframeFlippableCard(
 
                     VerticalTable(data = tableData)
 
-                    // 右下: フリップヒントガイド (表面へ)
+                    // 右下: フリップヒントガイド
                     Surface(
                         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f),
                         shape = CircleShape,
@@ -447,90 +478,68 @@ fun KeyframeFlippableCard(
 }
 
 /**
- * デフォルトカード (データ未選択時)
+ * 画像がなくなった場合の空状態表示カード & リセットボタン
  */
 @Composable
-fun DefaultFlippableTinderCard(
-    currentTime: Float,
-    realTimeMs: Long,
-    isFlipped: Boolean,
-    onToggleFlip: () -> Unit
+fun EmptyTinderCard(
+    onReset: () -> Unit
 ) {
-    val rotationY by animateFloatAsState(
-        targetValue = if (isFlipped) 180f else 0f,
-        animationSpec = tween(durationMillis = 400),
-        label = "DefaultCardFlip"
-    )
-
-    val density = LocalDensity.current
-
     ElevatedCard(
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                this.rotationY = rotationY
-                cameraDistance = 12f * density.density
-            }
-            .clickable { onToggleFlip() },
+        modifier = Modifier.fillMaxSize(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
         ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
-        if (rotationY <= 90f) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                ZoomableImage(
-                    painter = painterResource(id = R.drawable.ic_launcher_background),
-                    initialTopLeft = Offset(50f, 80f),
-                    initialBottomRight = Offset(80f, 50f),
-                    modifier = Modifier.fillMaxSize()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "🔍 対象の画像はありません",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "現在のフィルター条件で表示できるすべての画像がスワイプ・確認されました。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = onReset,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
                 )
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { this.rotationY = 180f }
-                    .padding(16.dp)
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Text(
-                        text = "📊 検出オブジェクト詳細",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    val timeStr = if (realTimeMs > 0L) {
-                        SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(realTimeMs))
-                    } else {
-                        "%02d:%02d".format((currentTime / 3600).toInt(), ((currentTime % 3600) / 60).toInt())
-                    }
-
-                    val tableData = listOf(
-                        "Timestamp" to timeStr,
-                        "Class" to "-",
-                        "Score" to "-",
-                        "Color" to "-",
-                        "Status" to "Normal"
-                    )
-
-                    VerticalTable(data = tableData)
-                }
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Re-check Cards",
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("忘れ物を見落としていないか再確認")
             }
         }
     }
 }
 
 /**
- * Tinder 風アクションボタン (❌ DISLIKE / 🔄 FLIP / ❤️ LIKE)
+ * Tinder 風アクションボタン (❌ DISLIKE / 🔄 FLIP または RESET / ❤️ LIKE)
  */
 @Composable
 fun TinderActionButtons(
+    hasCards: Boolean,
     onDislike: () -> Unit,
     onFlip: () -> Unit,
+    onReset: () -> Unit,
     onLike: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -539,50 +548,52 @@ fun TinderActionButtons(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // ❌ DISLIKE ボタン (左へスワイプ)
+        // ❌ DISLIKE ボタン
         IconButton(
             onClick = onDislike,
+            enabled = hasCards,
             modifier = Modifier
                 .size(52.dp)
-                .background(Color(0xFFFFEBEE), CircleShape)
-                .border(1.5.dp, Color(0xFFE53935), CircleShape)
+                .background(if (hasCards) Color(0xFFFFEBEE) else Color.LightGray.copy(alpha = 0.3f), CircleShape)
+                .border(1.5.dp, if (hasCards) Color(0xFFE53935) else Color.Gray, CircleShape)
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = "Dislike",
-                tint = Color(0xFFE53935),
+                tint = if (hasCards) Color(0xFFE53935) else Color.Gray,
                 modifier = Modifier.size(26.dp)
             )
         }
 
-        // 🔄 FLIP ボタン (表裏ひっくり返し)
+        // 🔄 RESET / FLIP ボタン
         IconButton(
-            onClick = onFlip,
+            onClick = if (hasCards) onFlip else onReset,
             modifier = Modifier
                 .size(46.dp)
                 .background(Color(0xFFE3F2FD), CircleShape)
                 .border(1.5.dp, Color(0xFF1976D2), CircleShape)
         ) {
             Icon(
-                imageVector = Icons.Default.Flip,
-                contentDescription = "Flip Card",
+                imageVector = if (hasCards) Icons.Default.Flip else Icons.Default.Refresh,
+                contentDescription = if (hasCards) "Flip Card" else "Reset Cards",
                 tint = Color(0xFF1976D2),
                 modifier = Modifier.size(22.dp)
             )
         }
 
-        // ❤️ LIKE ボタン (右へスワイプ)
+        // ❤️ LIKE ボタン
         IconButton(
             onClick = onLike,
+            enabled = hasCards,
             modifier = Modifier
                 .size(52.dp)
-                .background(Color(0xE8E8F5E9), CircleShape)
-                .border(1.5.dp, Color(0xFF4CAF50), CircleShape)
+                .background(if (hasCards) Color(0xE8E8F5E9) else Color.LightGray.copy(alpha = 0.3f), CircleShape)
+                .border(1.5.dp, if (hasCards) Color(0xFF4CAF50) else Color.Gray, CircleShape)
         ) {
             Icon(
                 imageVector = Icons.Default.Favorite,
                 contentDescription = "Like",
-                tint = Color(0xFF4CAF50),
+                tint = if (hasCards) Color(0xFF4CAF50) else Color.Gray,
                 modifier = Modifier.size(26.dp)
             )
         }

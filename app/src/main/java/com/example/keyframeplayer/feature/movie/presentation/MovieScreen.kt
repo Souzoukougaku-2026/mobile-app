@@ -3,6 +3,7 @@ package com.example.keyframeplayer.feature.movie.presentation
 import android.net.Uri
 import android.view.View
 import android.widget.PopupMenu
+import java.util.UUID
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -50,7 +51,9 @@ fun MovieRoute(
         onPlayerPositionUpdated = viewModel::onPlayerPositionUpdated,
         onTimeScaleSelected = viewModel::onTimeScaleSelected,
         onClassFilterSelected = viewModel::onClassFilterSelected,
-        onColorFilterSelected = viewModel::onColorFilterSelected
+        onColorFilterSelected = viewModel::onColorFilterSelected,
+        onLikedFilterToggled = viewModel::onLikedFilterToggled,
+        onKeyframeLikedStateChanged = viewModel::onKeyframeLikedStateChanged
     )
 }
 
@@ -65,7 +68,9 @@ fun MovieScreen(
     onPlayerPositionUpdated: (Int, Long) -> Unit,
     onTimeScaleSelected: (TimeScale) -> Unit,
     onClassFilterSelected: (String?) -> Unit,
-    onColorFilterSelected: (ImageColor?) -> Unit
+    onColorFilterSelected: (ImageColor?) -> Unit,
+    onLikedFilterToggled: () -> Unit = {},
+    onKeyframeLikedStateChanged: (UUID, Boolean) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     var isFullScreen by remember { mutableStateOf(false) }
@@ -177,7 +182,8 @@ fun MovieScreen(
                         uiState = uiState,
                         onTimeScaleSelected = onTimeScaleSelected,
                         onClassFilterSelected = onClassFilterSelected,
-                        onColorFilterSelected = onColorFilterSelected
+                        onColorFilterSelected = onColorFilterSelected,
+                        onLikedFilterToggled = onLikedFilterToggled
                     )
                 }
 
@@ -196,12 +202,16 @@ fun MovieScreen(
                     currentTime = uiState.currentTime,
                     activeKeyframe = activeKeyframe,
                     keyframes = uiState.keyframes,
+                    selectedClassFilter = uiState.selectedClassFilter,
+                    selectedColorFilter = uiState.selectedColorFilter,
+                    isLikedFilterOnly = uiState.isLikedFilterOnly,
                     realTimeMs = uiState.currentRealTimeMs,
+                    onKeyframeLikedStateChanged = onKeyframeLikedStateChanged,
                     onSwipeLeft = { cropImage ->
-                        // NOPE スワイプ時の動作 (例: 次のキーフレームまたはスキップ)
+                        // NOPE スワイプ時の動作
                     },
                     onSwipeRight = { cropImage ->
-                        // LIKE スワイプ時の動作 (例: タイムラインシーク等のアクション)
+                        // LIKE スワイプ時の動作 (該当キーフレーム位置へシーク)
                         cropImage?.let {
                             val progress = if (uiState.totalRealDurationMs > 0L) {
                                 ((it.realTime - uiState.minRealTimeMs).toFloat() / uiState.totalRealDurationMs.toFloat()).coerceIn(0f, 1f)

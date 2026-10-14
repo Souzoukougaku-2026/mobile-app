@@ -12,7 +12,7 @@ import com.example.keyframeplayer.core.data.database.entity.VideoEntity
 
 @Database(
     entities = [CropImageEntity::class, KeyFrameEntity::class, VideoEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

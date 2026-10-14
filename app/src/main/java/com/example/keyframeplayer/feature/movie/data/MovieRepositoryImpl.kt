@@ -76,7 +76,8 @@ class MovieRepositoryImpl @Inject constructor(
                         realTime = entity.realTime,
                         fileTime = entity.fileTime.toInt(),
                         keyFramePath = entity.keyFramePath,
-                        idKeyFrame = entity.idKeyFrame
+                        idKeyFrame = entity.idKeyFrame,
+                        isLiked = entity.isLiked
                     )
                 }
             }
@@ -100,8 +101,13 @@ class MovieRepositoryImpl @Inject constructor(
             realTime = entity.realTime,
             fileTime = entity.fileTime.toInt(),
             keyFramePath = entity.keyFramePath,
-            idKeyFrame = entity.idKeyFrame
+            idKeyFrame = entity.idKeyFrame,
+            isLiked = entity.isLiked
         )
+    }
+
+    override suspend fun updateCropImageLiked(id: UUID, isLiked: Boolean) = withContext(Dispatchers.IO) {
+        cropImageDao.updateLikedState(id, isLiked)
     }
 
     override suspend fun getKeyFrameById(id: UUID): KeyFrame? = withContext(Dispatchers.IO) {

@@ -42,5 +42,6 @@ data class CropImageEntity(
     val fileTime: Long,
     @ColumnInfo(name = "id_keyFrame")
     val idKeyFrame: UUID,
-    val keyFramePath: String
+    val keyFramePath: String,
+    val isLiked: Boolean = false
 )

@@ -51,6 +51,7 @@ data class MovieUiState(
     val selectedTimeScale: TimeScale = TimeScale.SIX_HOURS,
     val selectedClassFilter: String? = null, // null は「すべて」
     val selectedColorFilter: ImageColor? = null, // null は「すべて」
+    val isLikedFilterOnly: Boolean = false, // true の場合「いいね」された画像のみ表示
     val availableClasses: List<String> = emptyList(),
     val availableColors: List<ImageColor> = ImageColor.entries,
 
