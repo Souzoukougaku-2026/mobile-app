@@ -17,4 +17,9 @@ interface ListRepository {
      * 指定された KeyFrame とそれに紐づく CropImage リストをデータベースに挿入します。
      */
     suspend fun insertCropData(keyFrame: KeyFrame, cropImages: List<CropImage>)
+
+    /**
+     * CropImage のいいね状態を更新します。
+     */
+    suspend fun updateLikedState(id: java.util.UUID, isLiked: Boolean)
 }

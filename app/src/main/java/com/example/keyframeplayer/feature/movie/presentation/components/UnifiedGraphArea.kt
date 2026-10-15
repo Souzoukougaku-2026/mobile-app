@@ -2,7 +2,8 @@ package com.example.keyframeplayer.feature.movie.presentation.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -25,6 +26,9 @@ import androidx.compose.ui.unit.dp
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.presentation.MovieUiState
 import com.example.keyframeplayer.feature.movie.presentation.TimeScale
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -37,6 +41,10 @@ fun UnifiedGraphArea(
     onTimeScaleSelected: (TimeScale) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val currentUiState by rememberUpdatedState(uiState)
+    val currentOnProgressTapped by rememberUpdatedState(onProgressTapped)
+    val coroutineScope = rememberCoroutineScope()
+
     val timeScale = uiState.selectedTimeScale
     val minReal = uiState.minRealTimeMs
     val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
@@ -141,19 +149,122 @@ fun UnifiedGraphArea(
                 Column(modifier = Modifier.fillMaxWidth()) {
                     val primaryColor = MaterialTheme.colorScheme.primary
 
+                    var isDraggingRedBar by remember { mutableStateOf(false) }
+
+                    val currentRealMs = uiState.currentRealTimeMs
+                    val isCurrentInPage = currentRealMs in pageStartMs..pageEndMs
+                    val currentProgressInPage = if (isCurrentInPage) {
+                        ((currentRealMs - pageStartMs).toFloat() / scaleWindowMs.toFloat()).coerceIn(0f, 1f)
+                    } else -1f
+
                     // 1ページあたりの Canvas 描画 (画面横幅に約90本のバー)
                     Canvas(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(105.dp)
                             .padding(horizontal = 16.dp)
-                            .pointerInput(page, pageStartMs, scaleWindowMs, spanMs) {
-                                detectTapGestures { offset ->
-                                    if (size.width > 0) {
-                                        val pageProgress = (offset.x / size.width).coerceIn(0f, 1f)
-                                        val clickedRealTimeMs = pageStartMs + (pageProgress * scaleWindowMs).toLong()
-                                        val overallProgress = ((clickedRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                                        onProgressTapped(overallProgress)
+                            .pointerInput(page, pageStartMs, scaleWindowMs, spanMs, minReal, isCurrentInPage, currentProgressInPage) {
+                                val touchRadiusPx = 28.dp.toPx()
+                                val touchSlop = viewConfiguration.touchSlop
+                                val edgeThresholdPx = 36.dp.toPx()
+
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        val canvasWidth = size.width.toFloat()
+                                        if (canvasWidth <= 0f) continue
+
+                                        val indicatorX = if (isCurrentInPage && currentProgressInPage >= 0f) {
+                                            currentProgressInPage * canvasWidth
+                                        } else -1000f
+
+                                        // タッチ位置が赤バー（およびそのバブル）の付近か判定
+                                        val isNearRedBar = isCurrentInPage &&
+                                                kotlin.math.abs(down.position.x - indicatorX) <= touchRadiusPx
+
+                                        fun updateProgressForX(x: Float) {
+                                            val pageProgress = (x / canvasWidth).coerceIn(0f, 1f)
+                                            val clickedRealTimeMs = pageStartMs + (pageProgress * scaleWindowMs).toLong()
+                                            val overallProgress = ((clickedRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                            currentOnProgressTapped(overallProgress)
+                                        }
+
+                                        if (isNearRedBar) {
+                                            // --- 赤バー上の操作：ドラッグ＆ドロップ ＆ ページを跨ぐ自然な時間進行 ---
+                                            down.consume()
+                                            isDraggingRedBar = true
+
+                                            var currentX = down.position.x
+                                            var lastX = down.position.x
+                                            val pointerId = down.id
+
+                                            // 画面端に指がある場合の自動スクロール
+                                            val autoScrollJob = coroutineScope.launch {
+                                                while (isActive) {
+                                                    delay(30L)
+
+                                                    val state = currentUiState
+                                                    if (currentX > canvasWidth - edgeThresholdPx) {
+                                                        val overflow = ((currentX - (canvasWidth - edgeThresholdPx)) / edgeThresholdPx).coerceAtLeast(0.5f)
+                                                        val stepMs = (scaleWindowMs * 0.015f * overflow).toLong().coerceAtLeast(100L)
+                                                        val newMs = (state.currentRealTimeMs + stepMs).coerceAtMost(minReal + spanMs)
+                                                        val overallProgress = ((newMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                                        currentOnProgressTapped(overallProgress)
+                                                    } else if (currentX < edgeThresholdPx) {
+                                                        val overflow = ((edgeThresholdPx - currentX) / edgeThresholdPx).coerceAtLeast(0.5f)
+                                                        val stepMs = (scaleWindowMs * 0.015f * overflow).toLong().coerceAtLeast(100L)
+                                                        val newMs = (state.currentRealTimeMs - stepMs).coerceAtLeast(minReal)
+                                                        val overallProgress = ((newMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                                        currentOnProgressTapped(overallProgress)
+                                                    }
+                                                }
+                                            }
+
+                                            try {
+                                                // 指の相対移動距離(deltaX)に基づきページを跨いで連続的に時間を移動
+                                                drag(pointerId) { change ->
+                                                    change.consume()
+                                                    currentX = change.position.x
+                                                    val deltaX = change.position.x - lastX
+                                                    lastX = change.position.x
+
+                                                    if (kotlin.math.abs(deltaX) > 0.1f) {
+                                                        val msPerPx = scaleWindowMs.toDouble() / canvasWidth.toDouble()
+                                                        val deltaMs = (deltaX * msPerPx).toLong()
+                                                        val currentMs = currentUiState.currentRealTimeMs
+                                                        val newMs = (currentMs + deltaMs).coerceIn(minReal, minReal + spanMs)
+                                                        val overallProgress = ((newMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                                        currentOnProgressTapped(overallProgress)
+                                                    }
+                                                }
+                                            } finally {
+                                                autoScrollJob.cancel()
+                                                isDraggingRedBar = false
+                                            }
+                                        } else {
+                                            // --- 赤バー以外の操作：タップ(ジャンプ移動) または スワイプ(グラフめくり) ---
+                                            while (true) {
+                                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                                if (change.isConsumed) {
+                                                    break
+                                                }
+
+                                                if (change.pressed) {
+                                                    val distance = (change.position - down.position).getDistance()
+                                                    if (distance > touchSlop) {
+                                                        // 横スワイプ操作と判定：親(HorizontalPager)にジェスチャーを譲る
+                                                        break
+                                                    }
+                                                } else {
+                                                    // 指が移動せずに離れた：タップと判定し赤バーをその地点に移動
+                                                    updateProgressForX(change.position.x)
+                                                    change.consume()
+                                                    break
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -191,11 +302,6 @@ fun UnifiedGraphArea(
                         val barCounts = uiState.graphBarCounts
                         val maxCount = uiState.maxBarCount.toFloat().coerceAtLeast(1f)
 
-                        val currentRealMs = uiState.currentRealTimeMs
-                        val isCurrentInPage = currentRealMs in pageStartMs..pageEndMs
-                        val currentProgressInPage = if (isCurrentInPage) {
-                            ((currentRealMs - pageStartMs).toFloat() / scaleWindowMs.toFloat()).coerceIn(0f, 1f)
-                        } else -1f
                         val currentBarIndexInPage = if (currentProgressInPage >= 0f) {
                             (currentProgressInPage * barCountInWindow).toInt().coerceIn(0, barCountInWindow - 1)
                         } else -1
@@ -224,12 +330,13 @@ fun UnifiedGraphArea(
                         // 現在位置インジケーター (赤線 & バブル)
                         if (isCurrentInPage && currentProgressInPage >= 0f) {
                             val indicatorX = currentProgressInPage * canvasWidth
+                            val lineStrokeWidth = if (isDraggingRedBar) 4.dp.toPx() else 2.5.dp.toPx()
 
                             drawLine(
                                 color = Color.Red,
                                 start = Offset(indicatorX, 0f),
                                 end = Offset(indicatorX, canvasHeight),
-                                strokeWidth = 2.5.dp.toPx()
+                                strokeWidth = lineStrokeWidth
                             )
 
                             val dateTimeSdf = SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
@@ -248,7 +355,7 @@ fun UnifiedGraphArea(
                                 val bgLeft = (indicatorX - bgWidth / 2f).coerceIn(0f, canvasWidth - bgWidth)
 
                                 drawRoundRect(
-                                    color = Color.Red,
+                                    color = if (isDraggingRedBar) Color(0xFFFF3333) else Color.Red,
                                     topLeft = Offset(bgLeft, 0f),
                                     size = Size(bgWidth, bgHeight),
                                     cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
@@ -428,7 +535,7 @@ fun GraphControlArea(
                 modifier = Modifier.weight(1f)
             ) {
                 OutlinedTextField(
-                    value = uiState.selectedClassFilter ?: "すべてのクラス",
+                    value = uiState.selectedClassFilter ?: "すべて",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("クラス絞り込み") },
@@ -442,7 +549,7 @@ fun GraphControlArea(
                     onDismissRequest = { classMenuExpanded = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("すべてのクラス") },
+                        text = { Text("全てのクラス") },
                         onClick = {
                             onClassFilterSelected(null)
                             classMenuExpanded = false
@@ -467,7 +574,7 @@ fun GraphControlArea(
                 modifier = Modifier.weight(1f)
             ) {
                 OutlinedTextField(
-                    value = uiState.selectedColorFilter?.name ?: "すべての色",
+                    value = uiState.selectedColorFilter?.name ?: "すべて",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("色絞り込み") },

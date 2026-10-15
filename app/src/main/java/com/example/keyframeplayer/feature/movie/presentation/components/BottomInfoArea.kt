@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -26,11 +27,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import kotlinx.coroutines.launch
@@ -40,8 +39,201 @@ import java.util.Locale
 import java.util.UUID
 import kotlin.math.abs
 
+/**
+ * 動画詳細画面の下部エリア: 検出画像とその情報を表示
+ */
 @Composable
 fun BottomInfoArea(
+    currentTime: Float,
+    activeKeyframe: CropImage? = null,
+    keyframes: List<CropImage> = emptyList(),
+    selectedClassFilter: String? = null,
+    selectedColorFilter: ImageColor? = null,
+    isLikedFilterOnly: Boolean = false,
+    realTimeMs: Long = 0L,
+    onSwipeLeft: (CropImage?) -> Unit = {},
+    onSwipeRight: (CropImage?) -> Unit = {},
+    onKeyframeLikedStateChanged: (UUID, Boolean) -> Unit = { _, _ -> },
+    modifier: Modifier = Modifier
+) {
+    // 1. クラス & 色 & いいね フィルター適用
+    val filteredKeyframes = remember(keyframes, selectedClassFilter, selectedColorFilter, isLikedFilterOnly) {
+        keyframes.filter { item ->
+            (selectedClassFilter == null || item.className == selectedClassFilter) &&
+            (selectedColorFilter == null || item.color == selectedColorFilter) &&
+            (!isLikedFilterOnly || item.isLiked)
+        }
+    }
+
+    // 2. 現在の動画再生位置・アクティブキーフレームに基づく対象キーフレームの抽出
+    val currentKeyframe = remember(filteredKeyframes, activeKeyframe, realTimeMs) {
+        if (activeKeyframe != null && filteredKeyframes.contains(activeKeyframe)) {
+            activeKeyframe
+        } else if (realTimeMs > 0L && filteredKeyframes.isNotEmpty()) {
+            filteredKeyframes.minByOrNull { abs(it.realTime - realTimeMs) }
+        } else {
+            filteredKeyframes.firstOrNull()
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (currentKeyframe != null) {
+            val currentIndex = filteredKeyframes.indexOf(currentKeyframe)
+
+            // ヘッダー (タイトル & お気に入り切り替えボタン)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "📸 検出オブジェクト詳細 (${currentIndex + 1} / ${filteredKeyframes.size}件)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                IconButton(
+                    onClick = {
+                        onKeyframeLikedStateChanged(currentKeyframe.id, !currentKeyframe.isLiked)
+                    }
+                ) {
+                    Icon(
+                        imageVector = if (currentKeyframe.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Toggle Favorite",
+                        tint = if (currentKeyframe.isLiked) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // 画像と詳細情報のメインカード
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    // 画像表示エリア
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .background(Color.Black, shape = RoundedCornerShape(12.dp))
+                    ) {
+                        ZoomableImage(
+                            imagePath = currentKeyframe.keyFramePath,
+                            isPixelCoordinates = true,
+                            initialTopLeft = Offset(currentKeyframe.bboxLeft.toFloat(), currentKeyframe.bboxTop.toFloat()),
+                            initialBottomRight = Offset(currentKeyframe.bboxRight.toFloat(), currentKeyframe.bboxBottom.toFloat()),
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        // 左上: クラス名・スコアのバッジ
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.65f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = currentKeyframe.className.ifEmpty { "Object" },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Score: %.2f".format(currentKeyframe.score),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.LightGray
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // 詳細情報テーブル
+                    val timeStr = if (currentKeyframe.realTime > 0L) {
+                        SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(currentKeyframe.realTime))
+                    } else if (realTimeMs > 0L) {
+                        SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(realTimeMs))
+                    } else {
+                        "%02d:%02d".format((currentTime / 3600).toInt(), ((currentTime % 3600) / 60).toInt())
+                    }
+
+                    val tableData = listOf(
+                        "Timestamp" to timeStr,
+                        "Class Name" to currentKeyframe.className,
+//                        "Confidence Score" to "%.2f".format(currentKeyframe.score),
+                        "Color Tag" to currentKeyframe.color.name,
+//                        "BBox Coordinates" to "[${currentKeyframe.bboxLeft}, ${currentKeyframe.bboxTop}, ${currentKeyframe.bboxRight}, ${currentKeyframe.bboxBottom}]",
+//                        "Favorite State" to if (currentKeyframe.isLiked) "❤️ Liked" else "🤍 Normal"
+                    )
+
+                    VerticalTable(data = tableData)
+                }
+            }
+        } else {
+            // 画像がない場合の表示
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "🔍 検出画像はありません",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "現在のフィルター条件に合致する検出オブジェクトはありません。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * (旧TinderUI版) コード保持用コンポーザブル
+ */
+@Composable
+fun TinderBottomInfoArea(
     currentTime: Float,
     activeKeyframe: CropImage? = null,
     keyframes: List<CropImage> = emptyList(),
@@ -100,7 +292,7 @@ fun BottomInfoArea(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "🔥 Tinder カード (残 ${visibleCardList.size}件)",
+                text = "🔥 忘れ物？ カード (残 ${visibleCardList.size}件)",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )

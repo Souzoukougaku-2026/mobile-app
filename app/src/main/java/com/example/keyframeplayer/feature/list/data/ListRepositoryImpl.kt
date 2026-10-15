@@ -46,6 +46,10 @@ class ListRepositoryImpl @Inject constructor(
         cropImageDao.insertCropImages(cropImageEntities)
     }
 
+    override suspend fun updateLikedState(id: UUID, isLiked: Boolean) {
+        cropImageDao.updateLikedState(id, isLiked)
+    }
+
     private fun CropImageEntity.toDomain(): CropImage {
         return CropImage(
             id = id,

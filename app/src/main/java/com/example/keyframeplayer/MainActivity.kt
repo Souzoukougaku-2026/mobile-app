@@ -174,6 +174,7 @@ fun AppNavigation(
             ListUpScreen(
                 items = uiState.items,
                 onSortByDate = { isAsc -> listViewModel.setSortOrder(isAsc) },
+                onToggleLiked = { id, isLiked -> listViewModel.toggleLiked(id, isLiked) },
                 onNavigateToDetail = { image ->
                     navController.navigate("movie?cropImageId=${image.id}&realTime=${image.realTime}")
                 }
@@ -194,7 +195,10 @@ fun AppNavigation(
             )
         ) {
             val movieViewModel: MovieViewModel = hiltViewModel()
-            MovieRoute(viewModel = movieViewModel)
+            MovieRoute(
+                viewModel = movieViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }

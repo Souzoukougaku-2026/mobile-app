@@ -1,5 +1,6 @@
 package com.example.keyframeplayer.ui.screen
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,13 +10,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -42,11 +47,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
+import java.util.UUID
 import kotlin.math.ceil
 
 /**
@@ -57,6 +64,7 @@ import kotlin.math.ceil
 fun ListUpScreen(
     items: List<CropImage>,
     onSortByDate: (Boolean) -> Unit,
+    onToggleLiked: (UUID, Boolean) -> Unit = { _, _ -> },
     onNavigateToDetail: (CropImage) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -119,6 +127,10 @@ fun ListUpScreen(
                     },
                     onSortByDate = {
                         topics = topics.sortedBy { it.fileTime }
+                        currentPage = 0
+                    },
+                    onFilterLiked = {
+                        topics = items.filter { it.isLiked }
                         currentPage = 0
                     },
                     onFilterBlack = {
@@ -188,6 +200,7 @@ fun ListUpScreen(
             } else {
                 TopicGrid(
                     topics = pagedTopics,
+                    onToggleLiked = onToggleLiked,
                     onNavigateToDetail = onNavigateToDetail,
                     modifier = Modifier.padding(
                         start = 8.dp,
@@ -287,6 +300,7 @@ fun MyTopBar(
     onSearchClick: () -> Unit,
     onSortByname: () -> Unit,
     onSortByDate: () -> Unit,
+    onFilterLiked: () -> Unit,
     onFilterBlack: () -> Unit,
     onFilterWhite: () -> Unit,
     onFilterTime100: () -> Unit,
@@ -324,6 +338,13 @@ fun MyTopBar(
                 )
                 HorizontalDivider()
                 Text("フィルタ", modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.labelSmall)
+                DropdownMenuItem(
+                    text = { Text("❤️ いいねのみ") },
+                    onClick = {
+                        onFilterLiked()
+                        onExpandedChange(false)
+                    }
+                )
                 DropdownMenuItem(
                     text = { Text("黒色のみ") },
                     onClick = {
@@ -377,6 +398,7 @@ fun MyTopBar(
 @Composable
 fun TopicGrid(
     topics: List<CropImage>,
+    onToggleLiked: (UUID, Boolean) -> Unit,
     onNavigateToDetail: (CropImage) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -390,7 +412,11 @@ fun TopicGrid(
             items = topics,
             key = { it.id }
         ) { topic ->
-            TopicCard(topic = topic, onClick = { onNavigateToDetail(topic) })
+            TopicCard(
+                topic = topic,
+                onClick = { onNavigateToDetail(topic) },
+                onToggleLiked = onToggleLiked
+            )
         }
     }
 }
@@ -402,6 +428,7 @@ fun TopicGrid(
 fun TopicCard(
     topic: CropImage,
     onClick: () -> Unit,
+    onToggleLiked: (UUID, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -420,6 +447,28 @@ fun TopicCard(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
+
+                // 右上のいいね（ハート）ボタン
+                IconButton(
+                    onClick = {
+                        onToggleLiked(topic.id, !topic.isLiked)
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(32.dp)
+                        .background(
+                            color = Color.Black.copy(alpha = 0.45f),
+                            shape = CircleShape
+                        )
+                ) {
+                    Icon(
+                        imageVector = if (topic.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Favorite",
+                        tint = if (topic.isLiked) Color(0xFFE53935) else Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
 
             Column(modifier = Modifier.padding(8.dp)) {

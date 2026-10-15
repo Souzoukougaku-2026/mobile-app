@@ -63,6 +63,12 @@ class ListViewModel @Inject constructor(
         _isAscending.value = isAsc
     }
 
+    fun toggleLiked(id: java.util.UUID, isLiked: Boolean) {
+        viewModelScope.launch {
+            repository.updateLikedState(id, isLiked)
+        }
+    }
+
     /**
      * 取得された検出結果（外部から渡された引数）をデータベースへ登録します。
      * この関数はデータの出元を問わず、受け取ったデータを保存する責務のみを持ちます。

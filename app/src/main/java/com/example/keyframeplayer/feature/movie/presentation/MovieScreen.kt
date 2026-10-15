@@ -31,6 +31,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.presentation.components.*
@@ -39,11 +42,13 @@ import kotlinx.coroutines.delay
 @Composable
 fun MovieRoute(
     viewModel: MovieViewModel,
+    onNavigateBack: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     MovieScreen(
         uiState = uiState,
+        onNavigateBack = onNavigateBack,
         onTimeChanged = viewModel::onTimeChanged,
         onSkipBy = viewModel::onSkipBy,
         onProgressTapped = viewModel::onProgressTapped,
@@ -61,6 +66,7 @@ fun MovieRoute(
 @Composable
 fun MovieScreen(
     uiState: MovieUiState,
+    onNavigateBack: () -> Unit = {},
     onTimeChanged: (Float) -> Unit,
     onSkipBy: (Float) -> Unit,
     onProgressTapped: (Float) -> Unit,
@@ -125,8 +131,6 @@ fun MovieScreen(
         }
     }
 
-
-
     // 現在時刻に最も近いアクティブキーフレームの検索
     val activeKeyframe = remember(uiState.keyframes, uiState.currentRealTimeMs) {
         if (uiState.keyframes.isEmpty()) null
@@ -140,6 +144,41 @@ fun MovieScreen(
             .fillMaxSize()
             .background(if (isFullScreen) Color.Black else MaterialTheme.colorScheme.background)
     ) {
+        // --- ヘッダーエリア (OSステータスバーとの重なりを防止) ---
+        if (!isFullScreen) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding(),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "戻る"
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = uiState.videos.firstOrNull()?.name?.ifEmpty { null } ?: "動画詳細・キーフレーム解析",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
         // --- ビデオ表示エリア ---
         Box(
             modifier = Modifier
