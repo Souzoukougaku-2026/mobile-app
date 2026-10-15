@@ -167,14 +167,14 @@ fun MovieScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = uiState.videos.firstOrNull()?.name?.ifEmpty { null } ?: "動画詳細・キーフレーム解析",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+//                    Text(
+//                        text = uiState.videos.firstOrNull()?.name?.ifEmpty { null } ?: "動画詳細・キーフレーム解析",
+//                        style = MaterialTheme.typography.titleMedium,
+//                        fontWeight = FontWeight.Bold,
+//                        maxLines = 1,
+//                        overflow = TextOverflow.Ellipsis,
+//                        color = MaterialTheme.colorScheme.onSurface
+//                    )
                 }
             }
         }

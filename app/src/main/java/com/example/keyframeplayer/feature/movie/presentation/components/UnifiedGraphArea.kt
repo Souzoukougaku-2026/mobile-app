@@ -4,12 +4,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.presentation.MovieUiState
@@ -74,6 +74,9 @@ fun UnifiedGraphArea(
     // ピンチジェスチャーの累積倍率トラッキング
     var accumulatedZoom by remember { mutableFloatStateOf(1.0f) }
 
+    // スケールサイズドロップダウンの開閉状態
+    var timeScaleMenuExpanded by remember { mutableStateOf(false) }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -118,7 +121,7 @@ fun UnifiedGraphArea(
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
         ) {
-            // ページインジケーター & ズーム操作ヒント
+            // ページインジケーター & スケールサイズドロップダウン & ズーム操作ヒント
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -126,11 +129,62 @@ fun UnifiedGraphArea(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "ページ ${pagerState.currentPage + 1} / $pageCount (${timeScale.label}表示)",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "ページ ${pagerState.currentPage + 1} / $pageCount",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // スケールサイズ切り替えドロップダウン
+                    Box {
+                        FilterChip(
+                            selected = true,
+                            onClick = { timeScaleMenuExpanded = true },
+                            label = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = "${timeScale.label}表示",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "表示スケール選択",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        )
+
+                        DropdownMenu(
+                            expanded = timeScaleMenuExpanded,
+                            onDismissRequest = { timeScaleMenuExpanded = false }
+                        ) {
+                            TimeScale.entries.forEach { scale ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "${scale.label}表示",
+                                            fontWeight = if (scale == timeScale) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (scale == timeScale) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    onClick = {
+                                        onTimeScaleSelected(scale)
+                                        timeScaleMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Text(
                     text = "🔍 ピンチで拡大縮小",
                     style = MaterialTheme.typography.labelSmall,
@@ -475,13 +529,13 @@ fun PageTimeTicks(
 }
 
 /**
- * 時間スケール切替タブ (5段階) & クラス/色フィルター操作用コントロールUI
+ * クラス/色フィルター操作用コントロールUI
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GraphControlArea(
     uiState: MovieUiState,
-    onTimeScaleSelected: (TimeScale) -> Unit,
+    onTimeScaleSelected: (TimeScale) -> Unit = {},
     onClassFilterSelected: (String?) -> Unit,
     onColorFilterSelected: (ImageColor?) -> Unit,
     onLikedFilterToggled: () -> Unit,
@@ -495,34 +549,7 @@ fun GraphControlArea(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        // 1. 時間スケール切り替えボタン群 (5段階: 3日 / 1日 / 6時間 / 3時間 / 1.5時間)
-        Text(
-            text = "表示時間スケール",
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TimeScale.entries.forEach { scale ->
-                val isSelected = uiState.selectedTimeScale == scale
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { onTimeScaleSelected(scale) },
-                    label = {
-                        Text(scale.label)
-                    }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // 2. フィルター（クラス & 色 & いいね）
+        // フィルター（クラス & 色 & いいね）
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -93,12 +93,12 @@ fun BottomInfoArea(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "📸 検出オブジェクト詳細 (${currentIndex + 1} / ${filteredKeyframes.size}件)",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+//                Text(
+//                    text = "📸 検出オブジェクト詳細 (${currentIndex + 1} / ${filteredKeyframes.size}件)",
+//                    style = MaterialTheme.typography.titleMedium,
+//                    fontWeight = FontWeight.Bold,
+//                    color = MaterialTheme.colorScheme.primary
+//                )
 
                 IconButton(
                     onClick = {
