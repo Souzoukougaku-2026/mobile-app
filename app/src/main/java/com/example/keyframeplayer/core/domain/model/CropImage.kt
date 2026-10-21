@@ -33,3 +33,26 @@ data class CropImage(
         )
     }
 }
+
+fun String.toJapaneseClassName(): String {
+    return when (this.lowercase().trim()) {
+        "wallet" -> "財布"
+        "headphone", "headphones" -> "ヘッドホン"
+        "key", "keys" -> "鍵"
+        "smart phone", "smartphone", "phone" -> "スマホ"
+        "umbrella" -> "傘"
+        "person" -> "人物"
+        "car" -> "車"
+        "bag", "handbag", "backpack" -> "バッグ"
+        "bottle" -> "ボトル"
+        "chair" -> "椅子"
+        "laptop" -> "パソコン"
+        "book" -> "本"
+        "photography" -> "写真"
+        "keyframe" -> "キーフレーム"
+        else -> this.ifEmpty { "オブジェクト" }
+    }
+}
+
+val CropImage.japaneseClassName: String
+    get() = className.toJapaneseClassName()

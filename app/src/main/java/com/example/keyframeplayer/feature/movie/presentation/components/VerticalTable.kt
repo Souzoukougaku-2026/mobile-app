@@ -28,14 +28,16 @@ fun VerticalTable(data: List<Pair<String, String>>) {
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = value,
                     modifier = Modifier.weight(1.5f),
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
-            HorizontalDivider(thickness = 0.5.dp, color = androidx.compose.ui.graphics.Color.Gray.copy(alpha = 0.5f))
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }

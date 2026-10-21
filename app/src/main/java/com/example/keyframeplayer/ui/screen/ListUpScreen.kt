@@ -53,6 +53,10 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
+import com.example.keyframeplayer.core.domain.model.japaneseClassName
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import kotlin.math.ceil
 
@@ -82,12 +86,17 @@ fun ListUpScreen(
     fun applySearch(text: String, currentItems: List<CropImage>): List<CropImage> {
         if (text.isBlank()) return currentItems
         return currentItems
-            .filter { it.className.contains(text, ignoreCase = true) }
+            .filter {
+                it.className.contains(text, ignoreCase = true) ||
+                it.japaneseClassName.contains(text, ignoreCase = true) ||
+                it.color.displayName.contains(text, ignoreCase = true) ||
+                it.color.name.contains(text, ignoreCase = true)
+            }
             .sortedByDescending {
                 when {
-                    it.className.equals(text, true) -> 100
-                    it.className.startsWith(text, true) -> 80
-                    it.className.contains(text, true) -> 60
+                    it.japaneseClassName.equals(text, true) || it.className.equals(text, true) -> 100
+                    it.japaneseClassName.startsWith(text, true) || it.className.startsWith(text, true) -> 80
+                    it.japaneseClassName.contains(text, true) || it.className.contains(text, true) -> 60
                     else -> 0
                 }
             }
@@ -126,7 +135,7 @@ fun ListUpScreen(
                         currentPage = 0
                     },
                     onSortByDate = {
-                        topics = topics.sortedBy { it.fileTime }
+                        topics = topics.sortedBy { if (it.realTime > 0L) it.realTime else it.fileTime.toLong() }
                         currentPage = 0
                     },
                     onFilterLiked = {
@@ -431,6 +440,14 @@ fun TopicCard(
     onToggleLiked: (UUID, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val formattedTime = remember(topic.realTime, topic.fileTime) {
+        if (topic.realTime > 0L) {
+            SimpleDateFormat("yyyy/MM/dd,HH:mm:ss", Locale.getDefault()).format(Date(topic.realTime))
+        } else {
+            "${topic.fileTime}s"
+        }
+    }
+
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth()
@@ -478,12 +495,12 @@ fun TopicCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = topic.className,
+                        text = topic.japaneseClassName,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1
                     )
                     Text(
-                        text = topic.color.name,
+                        text = topic.color.displayName,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -494,7 +511,7 @@ fun TopicCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Time: ${topic.fileTime}s",
+                        text = formattedTime,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -24,6 +24,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.keyframeplayer.core.domain.model.ImageColor
+import com.example.keyframeplayer.core.domain.model.toJapaneseClassName
 import com.example.keyframeplayer.feature.movie.presentation.MovieUiState
 import com.example.keyframeplayer.feature.movie.presentation.TimeScale
 import kotlinx.coroutines.delay
@@ -562,7 +563,7 @@ fun GraphControlArea(
                 modifier = Modifier.weight(1f)
             ) {
                 OutlinedTextField(
-                    value = uiState.selectedClassFilter ?: "すべて",
+                    value = uiState.selectedClassFilter?.toJapaneseClassName() ?: "すべて",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("クラス絞り込み") },
@@ -584,7 +585,7 @@ fun GraphControlArea(
                     )
                     uiState.availableClasses.forEach { className ->
                         DropdownMenuItem(
-                            text = { Text(className) },
+                            text = { Text(className.toJapaneseClassName()) },
                             onClick = {
                                 onClassFilterSelected(className)
                                 classMenuExpanded = false
@@ -601,7 +602,7 @@ fun GraphControlArea(
                 modifier = Modifier.weight(1f)
             ) {
                 OutlinedTextField(
-                    value = uiState.selectedColorFilter?.name ?: "すべて",
+                    value = uiState.selectedColorFilter?.displayName ?: "すべて",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("色絞り込み") },
@@ -623,7 +624,7 @@ fun GraphControlArea(
                     )
                     uiState.availableColors.forEach { color ->
                         DropdownMenuItem(
-                            text = { Text(color.name) },
+                            text = { Text(color.displayName) },
                             onClick = {
                                 onColorFilterSelected(color)
                                 colorMenuExpanded = false

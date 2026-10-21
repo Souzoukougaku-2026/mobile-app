@@ -73,7 +73,7 @@ fun VideoKeyFrameLoadingScreen(
                         // 「45% 処理中...」のようにテキスト表示
                         Text(
                             text = "${(progress * 100).toInt()}% 処理中...",
-                            color = Color.White
+                            color = Color.Black
                         )
                     }
                 }

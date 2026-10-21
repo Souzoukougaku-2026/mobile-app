@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
+import com.example.keyframeplayer.core.domain.model.japaneseClassName
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -132,7 +133,7 @@ fun BottomInfoArea(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(200.dp)
-                            .background(Color.Black, shape = RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(12.dp))
                     ) {
                         ZoomableImage(
                             imagePath = currentKeyframe.keyFramePath,
@@ -144,7 +145,7 @@ fun BottomInfoArea(
 
                         // 左上: クラス名・スコアのバッジ
                         Surface(
-                            color = Color.Black.copy(alpha = 0.65f),
+                            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .align(Alignment.TopStart)
@@ -155,16 +156,16 @@ fun BottomInfoArea(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = currentKeyframe.className.ifEmpty { "Object" },
+                                    text = currentKeyframe.japaneseClassName,
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.inverseOnSurface,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Score: %.2f".format(currentKeyframe.score),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color.LightGray
+                                    color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.7f)
                                 )
                             }
                         }
@@ -174,18 +175,18 @@ fun BottomInfoArea(
 
                     // 詳細情報テーブル
                     val timeStr = if (currentKeyframe.realTime > 0L) {
-                        SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(currentKeyframe.realTime))
+                        SimpleDateFormat("yyyy/MM/dd,HH:mm:ss", Locale.getDefault()).format(Date(currentKeyframe.realTime))
                     } else if (realTimeMs > 0L) {
-                        SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(realTimeMs))
+                        SimpleDateFormat("yyyy/MM/dd,HH:mm:ss", Locale.getDefault()).format(Date(realTimeMs))
                     } else {
                         "%02d:%02d".format((currentTime / 3600).toInt(), ((currentTime % 3600) / 60).toInt())
                     }
 
                     val tableData = listOf(
                         "Timestamp" to timeStr,
-                        "Class Name" to currentKeyframe.className,
+                        "Class Name" to currentKeyframe.japaneseClassName,
 //                        "Confidence Score" to "%.2f".format(currentKeyframe.score),
-                        "Color Tag" to currentKeyframe.color.name,
+                        "Color Tag" to currentKeyframe.color.displayName,
 //                        "BBox Coordinates" to "[${currentKeyframe.bboxLeft}, ${currentKeyframe.bboxTop}, ${currentKeyframe.bboxRight}, ${currentKeyframe.bboxBottom}]",
 //                        "Favorite State" to if (currentKeyframe.isLiked) "❤️ Liked" else "🤍 Normal"
                     )
@@ -549,7 +550,7 @@ fun KeyframeFlippableCard(
 
                 // 左上: クラス名・スコアのバッジ
                 Surface(
-                    color = Color.Black.copy(alpha = 0.65f),
+                    color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -560,16 +561,16 @@ fun KeyframeFlippableCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = cropImage.className.ifEmpty { "Object" },
+                            text = cropImage.japaneseClassName,
                             style = MaterialTheme.typography.titleSmall,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.inverseOnSurface,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "Score: %.2f".format(cropImage.score),
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.LightGray
+                            color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.7f)
                         )
                     }
                 }
@@ -621,18 +622,18 @@ fun KeyframeFlippableCard(
                     )
 
                     val timeStr = if (cropImage.realTime > 0L) {
-                        SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(cropImage.realTime))
+                        SimpleDateFormat("yyyy/MM/dd,HH:mm:ss", Locale.getDefault()).format(Date(cropImage.realTime))
                     } else if (realTimeMs > 0L) {
-                        SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(realTimeMs))
+                        SimpleDateFormat("yyyy/MM/dd,HH:mm:ss", Locale.getDefault()).format(Date(realTimeMs))
                     } else {
                         "%02d:%02d".format((currentTime / 3600).toInt(), ((currentTime % 3600) / 60).toInt())
                     }
 
                     val tableData = listOf(
                         "Timestamp" to timeStr,
-                        "Class Name" to cropImage.className,
+                        "Class Name" to cropImage.japaneseClassName,
                         "Confidence Score" to "%.2f".format(cropImage.score),
-                        "Color Tag" to cropImage.color.name,
+                        "Color Tag" to cropImage.color.displayName,
                         "BBox Coordinates" to "[${cropImage.bboxLeft}, ${cropImage.bboxTop}, ${cropImage.bboxRight}, ${cropImage.bboxBottom}]",
                         "Frame Status" to "Active / Tracked"
                     )
@@ -735,6 +736,15 @@ fun TinderActionButtons(
     onLike: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val dislikeBg = if (hasCards) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val dislikeContent = if (hasCards) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+
+    val flipBg = MaterialTheme.colorScheme.secondaryContainer
+    val flipContent = MaterialTheme.colorScheme.onSecondaryContainer
+
+    val likeBg = if (hasCards) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val likeContent = if (hasCards) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -746,13 +756,13 @@ fun TinderActionButtons(
             enabled = hasCards,
             modifier = Modifier
                 .size(52.dp)
-                .background(if (hasCards) Color(0xFFFFEBEE) else Color.LightGray.copy(alpha = 0.3f), CircleShape)
-                .border(1.5.dp, if (hasCards) Color(0xFFE53935) else Color.Gray, CircleShape)
+                .background(dislikeBg, CircleShape)
+                .border(1.5.dp, dislikeContent, CircleShape)
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = "Dislike",
-                tint = if (hasCards) Color(0xFFE53935) else Color.Gray,
+                tint = dislikeContent,
                 modifier = Modifier.size(26.dp)
             )
         }
@@ -762,13 +772,13 @@ fun TinderActionButtons(
             onClick = if (hasCards) onFlip else onReset,
             modifier = Modifier
                 .size(46.dp)
-                .background(Color(0xFFE3F2FD), CircleShape)
-                .border(1.5.dp, Color(0xFF1976D2), CircleShape)
+                .background(flipBg, CircleShape)
+                .border(1.5.dp, flipContent, CircleShape)
         ) {
             Icon(
                 imageVector = if (hasCards) Icons.Default.Flip else Icons.Default.Refresh,
                 contentDescription = if (hasCards) "Flip Card" else "Reset Cards",
-                tint = Color(0xFF1976D2),
+                tint = flipContent,
                 modifier = Modifier.size(22.dp)
             )
         }
@@ -779,13 +789,13 @@ fun TinderActionButtons(
             enabled = hasCards,
             modifier = Modifier
                 .size(52.dp)
-                .background(if (hasCards) Color(0xE8E8F5E9) else Color.LightGray.copy(alpha = 0.3f), CircleShape)
-                .border(1.5.dp, if (hasCards) Color(0xFF4CAF50) else Color.Gray, CircleShape)
+                .background(likeBg, CircleShape)
+                .border(1.5.dp, likeContent, CircleShape)
         ) {
             Icon(
                 imageVector = Icons.Default.Favorite,
                 contentDescription = "Like",
-                tint = if (hasCards) Color(0xFF4CAF50) else Color.Gray,
+                tint = likeContent,
                 modifier = Modifier.size(26.dp)
             )
         }
