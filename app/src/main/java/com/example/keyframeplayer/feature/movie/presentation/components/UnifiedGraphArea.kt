@@ -3,6 +3,7 @@ package com.example.keyframeplayer.feature.movie.presentation.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +23,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.keyframeplayer.core.domain.model.ImageColor
@@ -29,6 +31,7 @@ import com.example.keyframeplayer.core.domain.model.toJapaneseClassName
 import com.example.keyframeplayer.feature.movie.presentation.MovieUiState
 import com.example.keyframeplayer.feature.movie.presentation.TimeScale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -65,6 +68,7 @@ fun UnifiedGraphArea(
     val spanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
 
     val scrollState = rememberScrollState()
+    val density = LocalDensity.current
 
     // 赤バーのドラッグ状態
     var isDraggingRedBar by remember { mutableStateOf(false) }
@@ -82,6 +86,41 @@ fun UnifiedGraphArea(
             if (totalWidthPx > 0 && spanMs > 0L) {
                 val targetScroll = (currentProgress * totalWidthPx) - (scrollState.viewportSize / 2f)
                 scrollState.scrollTo(targetScroll.toInt().coerceIn(0, scrollState.maxValue))
+            }
+        }
+    }
+
+    // 赤バーを端付近でドラッグ維持している場合の背景（グラフ）自動スライド処理
+    LaunchedEffect(isDraggingRedBar, localDragX) {
+        if (isDraggingRedBar && localDragX >= 0f) {
+            val edgeMarginPx = with(density) { 45.dp.toPx() }
+            val scrollSpeedPx = with(density) { 14.dp.toPx() }
+
+            while (isActive && isDraggingRedBar) {
+                val currentScroll = scrollState.value.toFloat()
+                val viewportWidth = scrollState.viewportSize.toFloat()
+
+                if (viewportWidth > 0f) {
+                    val screenX = localDragX - currentScroll
+
+                    var delta = 0f
+                    if (screenX < edgeMarginPx && currentScroll > 0) {
+                        val speedFactor = ((edgeMarginPx - screenX) / edgeMarginPx).coerceIn(0.2f, 1f)
+                        delta = -scrollSpeedPx * speedFactor
+                    } else if (screenX > viewportWidth - edgeMarginPx && currentScroll < scrollState.maxValue) {
+                        val speedFactor = ((screenX - (viewportWidth - edgeMarginPx)) / edgeMarginPx).coerceIn(0.2f, 1f)
+                        delta = scrollSpeedPx * speedFactor
+                    }
+
+                    if (delta != 0f) {
+                        val oldScroll = scrollState.value
+                        scrollState.scrollBy(delta)
+                        val actualDelta = scrollState.value - oldScroll
+                        localDragX = (localDragX + actualDelta).coerceIn(0f, scrollState.maxValue.toFloat() + viewportWidth)
+                    }
+                }
+
+                delay(16L)
             }
         }
     }
@@ -221,9 +260,9 @@ fun UnifiedGraphArea(
                         .width(totalWidth)
                 ) {
                     val primaryColor = MaterialTheme.colorScheme.primary
-                    val noVideoBgColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    val activeVideoBgColor = MaterialTheme.colorScheme.surface
-                    val activeBorderColor = primaryColor.copy(alpha = 0.6f)
+                    val noVideoBgColor = MaterialTheme.colorScheme.surfaceContainerLowest
+                    val activeVideoBgColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    val activeBorderColor = primaryColor
 
                     // 1. ヒストグラム・赤バー描画用 Canvas
                     Canvas(
