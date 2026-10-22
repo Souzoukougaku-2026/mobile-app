@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
@@ -79,6 +81,32 @@ fun UnifiedGraphArea(
     val currentProgress = if (spanMs > 0L) {
         ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
+
+    // 絞り込み適用済みのキーフレーム一覧 (時間昇順)
+    val filteredKeyframes = remember(
+        uiState.keyframes,
+        uiState.selectedClassFilter,
+        uiState.selectedColorFilter,
+        uiState.isLikedFilterOnly
+    ) {
+        uiState.keyframes
+            .filter { item ->
+                (uiState.selectedClassFilter == null || item.className == uiState.selectedClassFilter) &&
+                (uiState.selectedColorFilter == null || item.color == uiState.selectedColorFilter) &&
+                (!uiState.isLikedFilterOnly || item.isLiked)
+            }
+            .sortedBy { it.realTime }
+    }
+
+    // 現在時刻より前の最新オブジェクト
+    val prevKeyframe = remember(filteredKeyframes, currentRealTimeMs) {
+        filteredKeyframes.filter { it.realTime < currentRealTimeMs - 500L }.maxByOrNull { it.realTime }
+    }
+
+    // 現在時刻より後の最古オブジェクト
+    val nextKeyframe = remember(filteredKeyframes, currentRealTimeMs) {
+        filteredKeyframes.filter { it.realTime > currentRealTimeMs + 500L }.minByOrNull { it.realTime }
+    }
 
     LaunchedEffect(currentRealTimeMs, timeScale) {
         if (!scrollState.isScrollInProgress && !isDraggingRedBar) {
@@ -197,7 +225,7 @@ fun UnifiedGraphArea(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     // スケールサイズ切り替えドロップダウン
                     Box {
@@ -242,6 +270,48 @@ fun UnifiedGraphArea(
                                 )
                             }
                         }
+                    }
+
+                    // ◀ 前のオブジェクトの時点へ移動
+                    IconButton(
+                        onClick = {
+                            prevKeyframe?.let { kf ->
+                                if (spanMs > 0L) {
+                                    val progress = ((kf.realTime - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                    onProgressTapped(progress)
+                                }
+                            }
+                        },
+                        enabled = prevKeyframe != null,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "前の検出オブジェクトの時点へ移動",
+                            tint = if (prevKeyframe != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // ▶ 次のオブジェクトの時点へ移動
+                    IconButton(
+                        onClick = {
+                            nextKeyframe?.let { kf ->
+                                if (spanMs > 0L) {
+                                    val progress = ((kf.realTime - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                    onProgressTapped(progress)
+                                }
+                            }
+                        },
+                        enabled = nextKeyframe != null,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "次の検出オブジェクトの時点へ移動",
+                            tint = if (nextKeyframe != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
 
