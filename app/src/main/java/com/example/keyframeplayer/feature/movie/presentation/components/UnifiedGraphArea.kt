@@ -3,7 +3,6 @@ package com.example.keyframeplayer.feature.movie.presentation.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -232,11 +231,11 @@ fun UnifiedGraphArea(
             var isDraggingRedBar by remember { mutableStateOf(false) }
             var localDragX by remember { mutableFloatStateOf(-1f) }
 
-            // 1. HorizontalPager によるシームレスな巻物風ページング処理
+            // 1. シームレスな 1枚の巻物風オンデマンド読み込み処理 (ページ区切りを感じさせない連続構造)
             HorizontalPager(
                 state = pagerState,
                 pageSpacing = 0.dp,
-                beyondViewportPageCount = 1,
+                beyondViewportPageCount = 2,
                 userScrollEnabled = !isDraggingRedBar,
                 modifier = Modifier.fillMaxWidth()
             ) { page ->
@@ -268,6 +267,7 @@ fun UnifiedGraphArea(
                             .padding(horizontal = 16.dp)
                             .pointerInput(page, pageStartMs, scaleWindowMs, spanMs, minReal) {
                                 val edgeThresholdPx = 48.dp.toPx()
+                                val touchRadiusPx = 40.dp.toPx()
 
                                 awaitPointerEventScope {
                                     while (true) {
@@ -285,52 +285,101 @@ fun UnifiedGraphArea(
                                             currentOnProgressTapped(overallProgress)
                                         }
 
-                                        // 指を下ろした位置に即座に赤バーを移動して直感的にドラッグ開始
-                                        down.consume()
-                                        isDraggingRedBar = true
-                                        localDragX = down.position.x
+                                        val currentMs = currentUiState.currentRealTimeMs
+                                        val inPage = currentMs in pageStartMs..pageEndMs
+                                        val progressInPage = if (inPage) {
+                                            ((currentMs - pageStartMs).toFloat() / scaleWindowMs.toFloat()).coerceIn(0f, 1f)
+                                        } else -1f
 
-                                        var currentX = down.position.x
+                                        val indicatorX = if (isDraggingRedBar && localDragX >= 0f) {
+                                            localDragX
+                                        } else if (inPage && progressInPage >= 0f) {
+                                            progressInPage * canvasWidth
+                                        } else -1000f
+
+                                        // タッチ位置が赤バー付近か判定
+                                        val isNearRedBar = (inPage && kotlin.math.abs(down.position.x - indicatorX) <= touchRadiusPx) ||
+                                                (isDraggingRedBar && kotlin.math.abs(down.position.x - localDragX) <= touchRadiusPx)
+
+                                        var isLongPressConfirmed = false
+                                        var currentPointerX = down.position.x
                                         val pointerId = down.id
 
-                                        // 画面端に指がある場合の自動スクロール (端を維持する間 200ms 周期で時間軸をゆったり自動移動)
-                                        val autoScrollJob = coroutineScope.launch {
-                                            while (isActive) {
-                                                delay(200L) // ゆったりした周期で無理な連続シーク負荷を防止
-
-                                                val state = currentUiState
-                                                if (currentX > canvasWidth - edgeThresholdPx) {
-                                                    val ratio = ((currentX - (canvasWidth - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0.1f, 1f)
-                                                    val stepMs = (scaleWindowMs * 0.05f * ratio).toLong().coerceAtLeast(100L)
-                                                    val newMs = (state.currentRealTimeMs + stepMs).coerceAtMost(minReal + spanMs)
-                                                    val overallProgress = ((newMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                                                    currentOnProgressTapped(overallProgress)
-                                                } else if (currentX < edgeThresholdPx) {
-                                                    val ratio = ((edgeThresholdPx - currentX) / edgeThresholdPx).coerceIn(0.1f, 1f)
-                                                    val stepMs = (scaleWindowMs * 0.05f * ratio).toLong().coerceAtLeast(100L)
-                                                    val newMs = (state.currentRealTimeMs - stepMs).coerceAtLeast(minReal)
-                                                    val overallProgress = ((newMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                                                    currentOnProgressTapped(overallProgress)
-                                                }
+                                        // 赤バー付近のタッチ、または長押し(350ms)で赤バー保持モードへ突入
+                                        val longPressJob = coroutineScope.launch {
+                                            if (isNearRedBar) {
+                                                // 赤バー付近なら即座にドラッグ開始
+                                                isLongPressConfirmed = true
+                                                isDraggingRedBar = true
+                                                localDragX = currentPointerX
+                                            } else {
+                                                delay(350L) // 350msの長押しタイマー
+                                                isLongPressConfirmed = true
+                                                isDraggingRedBar = true
+                                                localDragX = currentPointerX
+                                                updateProgressForX(currentPointerX)
                                             }
                                         }
 
+                                        var isSlidWithoutLongPress = false
+
                                         try {
-                                            // ドラッグ中は表示位置(localDragX)のみを追従させ、動画シーク連打による重い処理を回避
-                                            drag(pointerId) { change ->
-                                                change.consume()
-                                                currentX = change.position.x
-                                                localDragX = currentX
-                                                // ===== [DEBUG MARKER: ドラッグ移動位置の更新] =====
+                                            while (true) {
+                                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                                val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+
+                                                currentPointerX = change.position.x
+                                                // ===== [DEBUG MARKER: タッチ移動の更新] =====
                                                 debugTouchPosition = change.position
+
+                                                if (!change.pressed) {
+                                                    // 指が離れた（UP）
+                                                    longPressJob.cancel()
+                                                    if (isLongPressConfirmed || isDraggingRedBar) {
+                                                        updateProgressForX(currentPointerX)
+                                                    } else if (!isSlidWithoutLongPress) {
+                                                        // 長押し前に指が離れたポチッとタップ ➡ その位置へ赤バーを移動
+                                                        change.consume()
+                                                        updateProgressForX(currentPointerX)
+                                                    }
+                                                    break
+                                                }
+
+                                                val slop = viewConfiguration.touchSlop
+                                                val totalDistance = (change.position - down.position).getDistance()
+
+                                                if (isLongPressConfirmed || isDraggingRedBar) {
+                                                    // 赤バー保持（ドラッグ）モード中 ➡ 指の位置に赤バー追従（親のスライドロック）
+                                                    longPressJob.cancel()
+                                                    change.consume()
+                                                    localDragX = currentPointerX
+
+                                                    // 画面端での超低速連続スクロール
+                                                    val state = currentUiState
+                                                    if (currentPointerX > canvasWidth - edgeThresholdPx) {
+                                                        val ratio = ((currentPointerX - (canvasWidth - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0.1f, 1f)
+                                                        val stepMs = (scaleWindowMs * 0.0003f * ratio).toLong().coerceIn(100L, 2000L)
+                                                        val newMs = (state.currentRealTimeMs + stepMs).coerceAtMost(minReal + spanMs)
+                                                        val overallProgress = ((newMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                                        currentOnProgressTapped(overallProgress)
+                                                    } else if (currentPointerX < edgeThresholdPx) {
+                                                        val ratio = ((edgeThresholdPx - currentPointerX) / edgeThresholdPx).coerceIn(0.1f, 1f)
+                                                        val stepMs = (scaleWindowMs * 0.0003f * ratio).toLong().coerceIn(100L, 2000L)
+                                                        val newMs = (state.currentRealTimeMs - stepMs).coerceAtLeast(minReal)
+                                                        val overallProgress = ((newMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                                        currentOnProgressTapped(overallProgress)
+                                                    }
+                                                } else if (totalDistance > slop) {
+                                                    // 長押し前に指が横に滑った ➡ 赤バー移動ではなく背景グラフの手動スライド（巻物めくり）
+                                                    longPressJob.cancel()
+                                                    isSlidWithoutLongPress = true
+                                                    break // 親(HorizontalPager)にスライド制御を譲る
+                                                }
                                             }
                                         } finally {
-                                            autoScrollJob.cancel()
-                                            // 指を離した瞬間に最終確定位置へ 1回だけシーク実行
-                                            updateProgressForX(currentX)
+                                            longPressJob.cancel()
                                             isDraggingRedBar = false
                                             localDragX = -1f
-                                            // ===== [DEBUG MARKER: ドラッグ解除] =====
                                             debugTouchPosition = null
                                         }
                                     }
@@ -442,7 +491,12 @@ fun UnifiedGraphArea(
                                 currentRealMs
                             }
 
-                            val dateTimeSdf = SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
+                            val isAtLeastOneAndHalfHours = scaleWindowMs >= 5400 * 1000L
+                            val dateTimeSdf = if (isAtLeastOneAndHalfHours) {
+                                SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
+                            } else {
+                                SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                            }
                             val dateTimeText = if (displayMs > 0L) dateTimeSdf.format(Date(displayMs)) else ""
 
                             if (dateTimeText.isNotEmpty()) {
@@ -558,7 +612,6 @@ fun PageTimeTicks(
             val secTimeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             val minTimeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
             val dateTimeFormat = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-            val isMultiDays = scaleWindowMs > 24 * 60 * 60 * 1000L
 
             var tickTimeMs = firstTick
             var lastDrawnX = -1000f
@@ -578,9 +631,10 @@ fun PageTimeTicks(
                             strokeWidth = 1.2.dp.toPx()
                         )
 
+                        val isAtLeastOneAndHalfHours = scaleWindowMs >= 5400 * 1000L
                         val label = when {
-                            isMultiDays -> dateTimeFormat.format(Date(tickTimeMs))
-                            scaleWindowMs <= 10 * 60 * 1000L -> secTimeFormat.format(Date(tickTimeMs))
+                            isAtLeastOneAndHalfHours -> dateTimeFormat.format(Date(tickTimeMs)) // 1.5時間以上は日付 MM/dd HH:mm を表示
+                            scaleWindowMs <= 10 * 60 * 1000L -> secTimeFormat.format(Date(tickTimeMs)) // 10分以下は秒まで表示
                             else -> minTimeFormat.format(Date(tickTimeMs))
                         }
 
