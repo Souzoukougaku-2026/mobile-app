@@ -3,9 +3,10 @@ package com.example.keyframeplayer.feature.movie.presentation.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Favorite
@@ -18,53 +19,33 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.core.domain.model.toJapaneseClassName
 import com.example.keyframeplayer.feature.movie.presentation.MovieUiState
 import com.example.keyframeplayer.feature.movie.presentation.TimeScale
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.ceil
+import kotlin.math.floor
 
 /**
  * =========================================================================================
- * 【赤バー（シークインジケーター）移動およびジェスチャー描画における実装仕様・制約ドキュメント】
+ * 【統合グラフ (Unified Graph Area) - v1/v2 復元シームレス連続スクロール版】
  * =========================================================================================
  * 
- * 1. タイムスケールとページング (HorizontalPager) の構造的制約:
- *    - グラフ全体は 1ページあたり [scaleWindowMs]（選択された TimeScale の時間幅）単位で
- *      HorizontalPager により仮想化ページング描画されています。
- *    - 各ページは独自の Canvas 座標空間 (0f .. canvasWidth) を持っており、赤バーの現在位置は
- *      [pageStartMs .. pageEndMs] に対する相対割合 (0.0 .. 1.0) で算出されます。
- *
- * 2. ドラッグ中の追従・アニメーション遅延 (animateFloatAsState) の回避:
- *    - 指で赤バーをドラッグ操作している間、animateFloatAsState や過度なスプリング補間を適用すると、
- *      指の移動に対して赤バーが遅れて追従したり、指を放した瞬間にアニメーションで位置が跳ね戻る等、
- *      ユーザー体験（操作感）の違和感・ブレの原因となります。
- *    - したがって、ドラッグ中 (isDraggingRedBar) は補間なしで現在位置を直接算出して描画し、
- *      指の動きにダイレクトに同期させます。
- *
- * 3. ページ境界（エッジ）跨ぎドラッグ時のポインターイベント空間の断絶:
- *    - ユーザーが赤バーを掴んだまま画面端に到達すると、ページの自動切り替え (scrollToPage) が発生します。
- *    - しかし pointerInput は各ページの Canvas 内にバインドされているため、ページが切り替わった瞬間に
- *      旧ページのポインター座標と新ページの座標系との間に不連続（ワープ現象）が発生します。
- *    - 対策: 赤バー操作中 (isDraggingRedBar) は HorizontalPager の手動ページスライドを無効化
- *      (userScrollEnabled = !isDraggingRedBar) し、エッジホールド時にタイマーで連続時間加算を行います。
- *
- * 4. ExoPlayer シーク (seekTo) 高頻度呼び出しによるフィードバックループ:
- *    - 赤バーのドラッグ中に毎フレーム (16msごと) Player へ seekTo を高頻度で送ると、動画デコーダーの
- *      バッファリング遅延が発生し、ExoPlayer の再生位置同期とドラッグ位置の間でフィードバックループが起きます。
- *    - 対策: MovieViewModel 側で lastSeekTimestamp による 800ms の位置同期インターロックを設けています。
+ * - ページ分割 (HorizontalPager) によるページスナップ動作を廃止し、.horizontalScroll(scrollState)
+ *   による1枚のシームレスな長尺タイムラインキャンバスとして描画します。
+ * - 表示時間スケール (TimeScale: 1日 / 6時間 / 1.5時間) の1画面幅に対して、動画全体の時間幅
+ *   (totalRealDurationMs) に比例した全長 (totalWidth) を動的に算定します。
+ * - 再生中は赤バーが画面中央付近に来るように scrollState が滑らかに追従スクロールします。
  * =========================================================================================
  */
 @Composable
@@ -83,24 +64,25 @@ fun UnifiedGraphArea(
     val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
     val spanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
 
-    // ページング数計算（1ページ = 選択時間スケールの表示幅）
-    val pageCount = maxOf(1, ceil(spanMs.toDouble() / scaleWindowMs.toDouble()).toInt())
+    val scrollState = rememberScrollState()
 
-    // 現在再生中の時刻が属するページインデックス
+    // 赤バーのドラッグ状態
+    var isDraggingRedBar by remember { mutableStateOf(false) }
+    var localDragX by remember { mutableFloatStateOf(-1f) }
+
+    // 再生位置が変更された場合に scrollState を中央付近へ自動スクロール（手動スクロール/ドラッグ中を除く）
     val currentRealTimeMs = uiState.currentRealTimeMs
-    val targetPage = if (scaleWindowMs > 0L) {
-        ((currentRealTimeMs - minReal) / scaleWindowMs).toInt().coerceIn(0, pageCount - 1)
-    } else 0
+    val currentProgress = if (spanMs > 0L) {
+        ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
 
-    val pagerState = rememberPagerState(
-        initialPage = targetPage.coerceIn(0, pageCount - 1),
-        pageCount = { pageCount }
-    )
-
-    // 再生位置が変わった際に pager を自動スクロール追従（手動操作中を除く）
-    LaunchedEffect(targetPage, pageCount) {
-        if (!pagerState.isScrollInProgress && pagerState.currentPage != targetPage) {
-            pagerState.scrollToPage(targetPage.coerceIn(0, pageCount - 1))
+    LaunchedEffect(currentRealTimeMs, timeScale) {
+        if (!scrollState.isScrollInProgress && !isDraggingRedBar) {
+            val totalWidthPx = scrollState.maxValue + scrollState.viewportSize
+            if (totalWidthPx > 0 && spanMs > 0L) {
+                val targetScroll = (currentProgress * totalWidthPx) - (scrollState.viewportSize / 2f)
+                scrollState.scrollTo(targetScroll.toInt().coerceIn(0, scrollState.maxValue))
+            }
         }
     }
 
@@ -110,7 +92,7 @@ fun UnifiedGraphArea(
     // スケールサイズドロップダウンの開閉状態
     var timeScaleMenuExpanded by remember { mutableStateOf(false) }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
@@ -151,12 +133,19 @@ fun UnifiedGraphArea(
                 }
             }
     ) {
+        val parentMaxWidth = this.maxWidth
+        val viewportWidthPx = constraints.maxWidth.toFloat()
+
+        // 表示スケール (scaleWindowMs) に対する全時間軸 (spanMs) の倍率から総横幅を算出
+        val scaleRatio = spanMs.toFloat() / scaleWindowMs.toFloat()
+        val totalWidth = parentMaxWidth * scaleRatio
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
         ) {
-            // ページインジケーター & スケールサイズドロップダウン & ズーム操作ヒント
+            // ヘッダー: スケールサイズドロップダウン & ズーム操作ヒント
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -168,12 +157,6 @@ fun UnifiedGraphArea(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "ページ ${pagerState.currentPage + 1} / $pageCount",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
                     // スケールサイズ切り替えドロップダウン
                     Box {
                         FilterChip(
@@ -227,46 +210,28 @@ fun UnifiedGraphArea(
                 )
             }
 
-            // 赤バーのドラッグ状態（ドラッグ中は Pager の手動スライドをロック）
-            var isDraggingRedBar by remember { mutableStateOf(false) }
-            var localDragX by remember { mutableFloatStateOf(-1f) }
-
-            // 1. シームレスな 1枚の巻物風オンデマンド読み込み処理 (ページ区切りを感じさせない連続構造)
-            HorizontalPager(
-                state = pagerState,
-                pageSpacing = 0.dp,
-                beyondViewportPageCount = 2,
-                userScrollEnabled = !isDraggingRedBar,
-                modifier = Modifier.fillMaxWidth()
-            ) { page ->
-                val pageStartMs = minReal + page * scaleWindowMs
-                val pageEndMs = pageStartMs + scaleWindowMs
-
-                Column(modifier = Modifier.fillMaxWidth()) {
+            // 一続きのシームレスな横スクロールコンテナ
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(scrollState)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(totalWidth)
+                ) {
                     val primaryColor = MaterialTheme.colorScheme.primary
-
-                    val currentRealMs = uiState.currentRealTimeMs
-                    val isCurrentInPage = currentRealMs in pageStartMs..pageEndMs
-                    val currentProgressInPage = if (isCurrentInPage) {
-                        ((currentRealMs - pageStartMs).toFloat() / scaleWindowMs.toFloat()).coerceIn(0f, 1f)
-                    } else -1f
-
                     val noVideoBgColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     val activeVideoBgColor = MaterialTheme.colorScheme.surface
                     val activeBorderColor = primaryColor.copy(alpha = 0.6f)
 
-                    // ===== [DEBUG MARKER: 指の位置描画用 (コメントアウト/削除で簡単に無効化可能)] =====
-                    var debugTouchPosition by remember { mutableStateOf<Offset?>(null) }
-                    // =========================================================================
-
-                    // 1ページあたりの Canvas 描画
+                    // 1. ヒストグラム・赤バー描画用 Canvas
                     Canvas(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(105.dp)
                             .padding(horizontal = 16.dp)
-                            .pointerInput(page, pageStartMs, scaleWindowMs, spanMs, minReal) {
-                                val edgeThresholdPx = 48.dp.toPx()
+                            .pointerInput(spanMs, minReal) {
                                 val touchRadiusPx = 40.dp.toPx()
 
                                 awaitPointerEventScope {
@@ -275,49 +240,37 @@ fun UnifiedGraphArea(
                                         val canvasWidth = size.width.toFloat()
                                         if (canvasWidth <= 0f) continue
 
-                                        // ===== [DEBUG MARKER: タッチ位置記憶] =====
-                                        debugTouchPosition = down.position
-
                                         fun updateProgressForX(x: Float) {
-                                            val pageProgress = (x / canvasWidth).coerceIn(0f, 1f)
-                                            val clickedRealTimeMs = pageStartMs + (pageProgress * scaleWindowMs).toLong()
-                                            val overallProgress = ((clickedRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                                            currentOnProgressTapped(overallProgress)
+                                            val progress = (x / canvasWidth).coerceIn(0f, 1f)
+                                            currentOnProgressTapped(progress)
                                         }
 
                                         val currentMs = currentUiState.currentRealTimeMs
-                                        val inPage = currentMs in pageStartMs..pageEndMs
-                                        val progressInPage = if (inPage) {
-                                            ((currentMs - pageStartMs).toFloat() / scaleWindowMs.toFloat()).coerceIn(0f, 1f)
-                                        } else -1f
-
+                                        val cProgress = if (spanMs > 0L) {
+                                            ((currentMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                        } else 0f
                                         val indicatorX = if (isDraggingRedBar && localDragX >= 0f) {
                                             localDragX
-                                        } else if (inPage && progressInPage >= 0f) {
-                                            progressInPage * canvasWidth
-                                        } else -1000f
+                                        } else {
+                                            cProgress * canvasWidth
+                                        }
 
-                                        // タッチ位置が赤バー付近か判定
-                                        val isNearRedBar = (inPage && kotlin.math.abs(down.position.x - indicatorX) <= touchRadiusPx) ||
-                                                (isDraggingRedBar && kotlin.math.abs(down.position.x - localDragX) <= touchRadiusPx)
+                                        val isNearRedBar = kotlin.math.abs(down.position.x - indicatorX) <= touchRadiusPx
 
                                         var isLongPressConfirmed = false
                                         var currentPointerX = down.position.x
                                         val pointerId = down.id
 
-                                        // 赤バー付近のタッチ、または長押し(350ms)で赤バー保持モードへ突入
                                         val longPressJob = coroutineScope.launch {
                                             if (isNearRedBar) {
-                                                // 赤バー付近なら即座にドラッグ開始
                                                 isLongPressConfirmed = true
                                                 isDraggingRedBar = true
                                                 localDragX = currentPointerX
                                             } else {
-                                                delay(350L) // 350msの長押しタイマー
+                                                delay(350L)
                                                 isLongPressConfirmed = true
                                                 isDraggingRedBar = true
                                                 localDragX = currentPointerX
-                                                updateProgressForX(currentPointerX)
                                             }
                                         }
 
@@ -329,16 +282,12 @@ fun UnifiedGraphArea(
                                                 val change = event.changes.firstOrNull { it.id == pointerId } ?: break
 
                                                 currentPointerX = change.position.x
-                                                // ===== [DEBUG MARKER: タッチ移動の更新] =====
-                                                debugTouchPosition = change.position
 
                                                 if (!change.pressed) {
-                                                    // 指が離れた（UP）
                                                     longPressJob.cancel()
                                                     if (isLongPressConfirmed || isDraggingRedBar) {
                                                         updateProgressForX(currentPointerX)
                                                     } else if (!isSlidWithoutLongPress) {
-                                                        // 長押し前に指が離れたポチッとタップ ➡ その位置へ赤バーを移動
                                                         change.consume()
                                                         updateProgressForX(currentPointerX)
                                                     }
@@ -349,38 +298,19 @@ fun UnifiedGraphArea(
                                                 val totalDistance = (change.position - down.position).getDistance()
 
                                                 if (isLongPressConfirmed || isDraggingRedBar) {
-                                                    // 赤バー保持（ドラッグ）モード中 ➡ 指の位置に赤バー追従（親のスライドロック）
                                                     longPressJob.cancel()
                                                     change.consume()
                                                     localDragX = currentPointerX
-
-                                                    // 画面端での超低速連続スクロール
-                                                    val state = currentUiState
-                                                    if (currentPointerX > canvasWidth - edgeThresholdPx) {
-                                                        val ratio = ((currentPointerX - (canvasWidth - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0.1f, 1f)
-                                                        val stepMs = (scaleWindowMs * 0.0003f * ratio).toLong().coerceIn(100L, 2000L)
-                                                        val newMs = (state.currentRealTimeMs + stepMs).coerceAtMost(minReal + spanMs)
-                                                        val overallProgress = ((newMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                                                        currentOnProgressTapped(overallProgress)
-                                                    } else if (currentPointerX < edgeThresholdPx) {
-                                                        val ratio = ((edgeThresholdPx - currentPointerX) / edgeThresholdPx).coerceIn(0.1f, 1f)
-                                                        val stepMs = (scaleWindowMs * 0.0003f * ratio).toLong().coerceIn(100L, 2000L)
-                                                        val newMs = (state.currentRealTimeMs - stepMs).coerceAtLeast(minReal)
-                                                        val overallProgress = ((newMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                                                        currentOnProgressTapped(overallProgress)
-                                                    }
                                                 } else if (totalDistance > slop) {
-                                                    // 長押し前に指が横に滑った ➡ 赤バー移動ではなく背景グラフの手動スライド（巻物めくり）
                                                     longPressJob.cancel()
                                                     isSlidWithoutLongPress = true
-                                                    break // 親(HorizontalPager)にスライド制御を譲る
+                                                    break
                                                 }
                                             }
                                         } finally {
                                             longPressJob.cancel()
                                             isDraggingRedBar = false
                                             localDragX = -1f
-                                            debugTouchPosition = null
                                         }
                                     }
                                 }
@@ -389,32 +319,30 @@ fun UnifiedGraphArea(
                         val canvasWidth = size.width
                         val canvasHeight = size.height
 
-                        // 1. 全体背景（動画が存在しない背景区間: 暗めのトーン）
+                        // 1. 全体背景 (動画が存在しない背景区間)
                         drawRoundRect(
                             color = noVideoBgColor,
                             size = Size(canvasWidth, canvasHeight),
                             cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
                         )
 
-                        // 2. 動画が存在する範囲（明るいハイライト領域 & 境界線）
+                        // 2. 動画が存在する範囲 (ハイライト領域)
                         for (video in uiState.videos) {
                             val vStart = video.realStartTime
                             val vEnd = video.realEndTime
-                            if (vEnd >= pageStartMs && vStart <= pageEndMs) {
-                                val startProgress = ((vStart - pageStartMs).toFloat() / scaleWindowMs.toFloat()).coerceIn(0f, 1f)
-                                val endProgress = ((vEnd - pageStartMs).toFloat() / scaleWindowMs.toFloat()).coerceIn(0f, 1f)
+                            if (vEnd >= minReal && vStart <= minReal + spanMs) {
+                                val startProgress = ((vStart - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                                val endProgress = ((vEnd - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
                                 val left = startProgress * canvasWidth
                                 val right = endProgress * canvasWidth
                                 val width = (right - left).coerceAtLeast(2f)
 
-                                // 動画が存在するエリアを「明」色で表示
                                 drawRect(
                                     color = activeVideoBgColor,
                                     topLeft = Offset(left, 0f),
                                     size = Size(width, canvasHeight)
                                 )
 
-                                // 動画範囲の境界線を描画
                                 drawLine(
                                     color = activeBorderColor,
                                     start = Offset(left, 0f),
@@ -430,127 +358,113 @@ fun UnifiedGraphArea(
                             }
                         }
 
-                        // 3. 集計データバーの描画 (画面横幅に1/90幅のバーを90本均等配置)
-                        val barCountInWindow = timeScale.barCountPerWindow
-                        val spacing = 0.5.dp.toPx()
-                        val barWidth = ((canvasWidth - (spacing * (barCountInWindow + 1))) / barCountInWindow).coerceAtLeast(1f)
-                        val stepWidth = barWidth + spacing
-
-                        val startBarIndex = page * barCountInWindow
+                        // 3. 集計データバーの描画 (可視領域のみを描画するパフォーマンス最適化)
                         val barCounts = uiState.graphBarCounts
-                        val maxCount = uiState.maxBarCount.toFloat().coerceAtLeast(1f)
+                        val totalBarCount = barCounts.size
+                        if (totalBarCount > 0) {
+                            val scrollOffset = scrollState.value.toFloat()
+                            val spacing = 0.5.dp.toPx()
+                            val barWidth = ((canvasWidth - (spacing * (totalBarCount + 1))) / totalBarCount).coerceAtLeast(1f)
+                            val stepWidth = barWidth + spacing
 
-                        val currentBarIndexInPage = if (currentProgressInPage >= 0f) {
-                            (currentProgressInPage * barCountInWindow).toInt().coerceIn(0, barCountInWindow - 1)
-                        } else -1
+                            val firstVisibleIndex = floor((scrollOffset - 16.dp.toPx()) / stepWidth).toInt().coerceAtLeast(0)
+                            val lastVisibleIndex = ceil((scrollOffset + viewportWidthPx) / stepWidth).toInt().coerceAtMost(totalBarCount - 1)
 
-                        for (i in 0 until barCountInWindow) {
-                            val globalBarIndex = startBarIndex + i
-                            val count = barCounts.getOrNull(globalBarIndex) ?: 0
-                            if (count <= 0) continue
+                            val maxCount = uiState.maxBarCount.toFloat().coerceAtLeast(1f)
+                            val cProgress = if (spanMs > 0L) {
+                                ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                            } else 0f
+                            val currentBarIndex = (cProgress * totalBarCount).toInt().coerceIn(0, totalBarCount - 1)
 
-                            val left = spacing + (i * stepWidth)
-                            val barHeightRatio = count.toFloat() / maxCount
-                            val barHeightPx = (canvasHeight * 0.75f) * barHeightRatio
-                            val top = canvasHeight - barHeightPx
+                            for (i in firstVisibleIndex..lastVisibleIndex) {
+                                val count = barCounts.getOrNull(i) ?: 0
+                                if (count <= 0) continue
 
-                            val isCurrent = (i == currentBarIndexInPage)
-                            val color = if (isCurrent) Color.Red else primaryColor
+                                val left = spacing + (i * stepWidth)
+                                val barHeightRatio = count.toFloat() / maxCount
+                                val barHeightPx = (canvasHeight * 0.75f) * barHeightRatio
+                                val top = canvasHeight - barHeightPx
 
-                            drawRoundRect(
-                                color = color,
-                                topLeft = Offset(left, top),
-                                size = Size(barWidth, barHeightPx),
-                                cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
-                            )
-                        }
-
-                        // 4. 現在位置インジケーター (滑らかに動く赤線 & 日時バッジ)
-                        val activeIndicatorX = if (isDraggingRedBar && localDragX >= 0f) {
-                            localDragX
-                        } else if (isCurrentInPage && currentProgressInPage >= 0f) {
-                            currentProgressInPage * canvasWidth
-                        } else -1000f
-
-                        val showIndicator = isDraggingRedBar || (isCurrentInPage && currentProgressInPage >= 0f)
-
-                        if (showIndicator && activeIndicatorX >= 0f) {
-                            val lineStrokeWidth = if (isDraggingRedBar) 4.dp.toPx() else 2.5.dp.toPx()
-
-                            drawLine(
-                                color = Color.Red,
-                                start = Offset(activeIndicatorX, 0f),
-                                end = Offset(activeIndicatorX, canvasHeight),
-                                strokeWidth = lineStrokeWidth
-                            )
-
-                            val displayMs = if (isDraggingRedBar && localDragX >= 0f) {
-                                val pageRatio = (localDragX / canvasWidth).coerceIn(0f, 1f)
-                                pageStartMs + (pageRatio * scaleWindowMs).toLong()
-                            } else {
-                                currentRealMs
-                            }
-
-                            val isAtLeastOneAndHalfHours = scaleWindowMs >= 5400 * 1000L
-                            val dateTimeSdf = if (isAtLeastOneAndHalfHours) {
-                                SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
-                            } else {
-                                SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-                            }
-                            val dateTimeText = if (displayMs > 0L) dateTimeSdf.format(Date(displayMs)) else ""
-
-                            if (dateTimeText.isNotEmpty()) {
-                                val paint = android.graphics.Paint().apply {
-                                    color = android.graphics.Color.WHITE
-                                    textSize = 10.dp.toPx()
-                                    isFakeBoldText = true
-                                    textAlign = android.graphics.Paint.Align.CENTER
-                                }
-                                val textWidth = paint.measureText(dateTimeText)
-                                val bgWidth = textWidth + 14.dp.toPx()
-                                val bgHeight = 20.dp.toPx()
-                                val bgLeft = (activeIndicatorX - bgWidth / 2f).coerceIn(0f, canvasWidth - bgWidth)
+                                val isCurrent = (i == currentBarIndex)
+                                val color = if (isCurrent) Color.Red else primaryColor
 
                                 drawRoundRect(
-                                    color = if (isDraggingRedBar) Color(0xFFFF3333) else Color.Red,
-                                    topLeft = Offset(bgLeft, 0f),
-                                    size = Size(bgWidth, bgHeight),
-                                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
-                                )
-
-                                drawContext.canvas.nativeCanvas.drawText(
-                                    dateTimeText,
-                                    bgLeft + bgWidth / 2f,
-                                    bgHeight - 5.dp.toPx(),
-                                    paint
+                                    color = color,
+                                    topLeft = Offset(left, top),
+                                    size = Size(barWidth, barHeightPx),
+                                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
                                 )
                             }
                         }
 
-                        // ===== [DEBUG MARKER: 指の位置表示用 (不要になったらコメントアウトまたは削除)] =====
-                        debugTouchPosition?.let { touchPos ->
-                            // 指のX座標を示す緑の垂直ライン
-                            drawLine(
-                                color = Color.Green,
-                                start = Offset(touchPos.x, 0f),
-                                end = Offset(touchPos.x, canvasHeight),
-                                strokeWidth = 2.dp.toPx()
+                        // 4. 赤バー（インジケーター）描画
+                        val cProgress = if (spanMs > 0L) {
+                            ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                        } else 0f
+
+                        val activeIndicatorX = if (isDraggingRedBar && localDragX >= 0f) {
+                            localDragX
+                        } else {
+                            cProgress * canvasWidth
+                        }
+
+                        val lineStrokeWidth = if (isDraggingRedBar) 4.dp.toPx() else 2.5.dp.toPx()
+
+                        drawLine(
+                            color = Color.Red,
+                            start = Offset(activeIndicatorX, 0f),
+                            end = Offset(activeIndicatorX, canvasHeight),
+                            strokeWidth = lineStrokeWidth
+                        )
+
+                        val displayMs = if (isDraggingRedBar && localDragX >= 0f) {
+                            val ratio = (localDragX / canvasWidth).coerceIn(0f, 1f)
+                            minReal + (ratio * spanMs).toLong()
+                        } else {
+                            currentRealTimeMs
+                        }
+
+                        val isAtLeastOneAndHalfHours = scaleWindowMs >= 5400 * 1000L
+                        val dateTimeSdf = if (isAtLeastOneAndHalfHours) {
+                            SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
+                        } else {
+                            SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                        }
+                        val dateTimeText = if (displayMs > 0L) dateTimeSdf.format(Date(displayMs)) else ""
+
+                        if (dateTimeText.isNotEmpty()) {
+                            val paint = android.graphics.Paint().apply {
+                                color = android.graphics.Color.WHITE
+                                textSize = 10.dp.toPx()
+                                isFakeBoldText = true
+                                textAlign = android.graphics.Paint.Align.CENTER
+                            }
+                            val textWidth = paint.measureText(dateTimeText)
+                            val bgWidth = textWidth + 14.dp.toPx()
+                            val bgHeight = 20.dp.toPx()
+                            val bgLeft = (activeIndicatorX - bgWidth / 2f).coerceIn(0f, canvasWidth - bgWidth)
+
+                            drawRoundRect(
+                                color = if (isDraggingRedBar) Color(0xFFFF3333) else Color.Red,
+                                topLeft = Offset(bgLeft, 0f),
+                                size = Size(bgWidth, bgHeight),
+                                cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                             )
 
-                            // 指のタッチ位置を中心とするシアン色の大きなマーカー円
-                            drawCircle(
-                                color = Color.Cyan.copy(alpha = 0.65f),
-                                radius = 22.dp.toPx(),
-                                center = touchPos
+                            drawContext.canvas.nativeCanvas.drawText(
+                                dateTimeText,
+                                bgLeft + bgWidth / 2f,
+                                bgHeight - 5.dp.toPx(),
+                                paint
                             )
                         }
-                        // =========================================================================
                     }
 
-                    // ページ単位のタイム目盛り
-                    PageTimeTicks(
-                        pageStartMs = pageStartMs,
-                        scaleWindowMs = scaleWindowMs
+                    // 2. スライド追従・動的タイム目盛り
+                    UnifiedTimeTicks(
+                        uiState = uiState,
+                        scrollOffset = scrollState.value.toFloat(),
+                        viewportWidthPx = viewportWidthPx
                     )
                 }
             }
@@ -559,12 +473,13 @@ fun UnifiedGraphArea(
 }
 
 /**
- * ページ内動的「日時」目盛りラベル
+ * 画面横スライドに対応した動的「日時」目盛りラベル
  */
 @Composable
-fun PageTimeTicks(
-    pageStartMs: Long,
-    scaleWindowMs: Long
+fun UnifiedTimeTicks(
+    uiState: MovieUiState,
+    scrollOffset: Float,
+    viewportWidthPx: Float
 ) {
     val tickTextColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val tickLineColor = MaterialTheme.colorScheme.outlineVariant
@@ -580,12 +495,15 @@ fun PageTimeTicks(
                 .height(22.dp)
         ) {
             val canvasWidth = size.width
-            val pageEndMs = pageStartMs + scaleWindowMs
+            val minReal = uiState.minRealTimeMs
+            val scaleWindowMs = (uiState.selectedTimeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+            val spanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
+            val maxReal = minReal + spanMs
 
-            if (canvasWidth <= 0f || scaleWindowMs <= 0L) return@Canvas
+            if (canvasWidth <= 0f || spanMs <= 0L) return@Canvas
 
             val minSpacingPx = 70.dp.toPx()
-            val msPerPx = scaleWindowMs.toDouble() / canvasWidth.toDouble()
+            val msPerPx = spanMs.toDouble() / canvasWidth.toDouble()
             val minIntervalMs = (minSpacingPx * msPerPx).toLong()
 
             val candidateIntervalsMs = listOf(
@@ -606,19 +524,24 @@ fun PageTimeTicks(
             val intervalMs = candidateIntervalsMs.firstOrNull { it >= minIntervalMs }
                 ?: candidateIntervalsMs.last()
 
-            val firstTick = (pageStartMs / intervalMs) * intervalMs
-            val lastTick = ((pageEndMs / intervalMs) + 1) * intervalMs
+            val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
+            val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
+
+            val firstTick = (visibleStartMs / intervalMs) * intervalMs
+            val lastTick = ((visibleEndMs / intervalMs) + 1) * intervalMs
 
             val secTimeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             val minTimeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
             val dateTimeFormat = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
 
+            val isAtLeastOneAndHalfHours = scaleWindowMs >= 5400 * 1000L
+
             var tickTimeMs = firstTick
             var lastDrawnX = -1000f
 
-            while (tickTimeMs <= lastTick) {
-                if (tickTimeMs in pageStartMs..pageEndMs) {
-                    val progress = ((tickTimeMs - pageStartMs).toDouble() / scaleWindowMs.toDouble()).coerceIn(0.0, 1.0)
+            while (tickTimeMs <= lastTick && tickTimeMs <= maxReal + intervalMs) {
+                if (tickTimeMs >= minReal) {
+                    val progress = ((tickTimeMs - minReal).toDouble() / spanMs.toDouble()).coerceIn(0.0, 1.0)
                     val x = (progress * canvasWidth).toFloat()
 
                     if (x - lastDrawnX >= 55.dp.toPx() || lastDrawnX < 0f) {
@@ -631,10 +554,9 @@ fun PageTimeTicks(
                             strokeWidth = 1.2.dp.toPx()
                         )
 
-                        val isAtLeastOneAndHalfHours = scaleWindowMs >= 5400 * 1000L
                         val label = when {
-                            isAtLeastOneAndHalfHours -> dateTimeFormat.format(Date(tickTimeMs)) // 1.5時間以上は日付 MM/dd HH:mm を表示
-                            scaleWindowMs <= 10 * 60 * 1000L -> secTimeFormat.format(Date(tickTimeMs)) // 10分以下は秒まで表示
+                            isAtLeastOneAndHalfHours -> dateTimeFormat.format(Date(tickTimeMs))
+                            scaleWindowMs <= 10 * 60 * 1000L -> secTimeFormat.format(Date(tickTimeMs))
                             else -> minTimeFormat.format(Date(tickTimeMs))
                         }
 
