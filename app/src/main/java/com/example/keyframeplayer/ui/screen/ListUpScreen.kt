@@ -1,17 +1,7 @@
 package com.example.keyframeplayer.ui.screen
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -19,46 +9,50 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.core.domain.model.japaneseClassName
+import com.example.keyframeplayer.core.domain.model.toJapaneseClassName
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.ceil
+
+/**
+ * ソート項目の定義
+ */
+enum class ListSortOption(val label: String) {
+    DATE_DESC("日時 (新しい順)"),
+    DATE_ASC("日時 (古い順)"),
+    NAME_ASC("クラス名 (昇順)"),
+    NAME_DESC("クラス名 (降順)")
+}
+
+/**
+ * ドロップダウンメニューの画面階層
+ */
+private enum class MenuPage {
+    MAIN,
+    SORT,
+    CLASS,
+    COLOR
+}
 
 /**
  * 独立したスクリーンコンポーザブル（CropImageDBから取得したデータの表示）
@@ -67,7 +61,7 @@ import kotlin.math.ceil
 @Composable
 fun ListUpScreen(
     items: List<CropImage>,
-    onSortByDate: (Boolean) -> Unit,
+    onSortByDate: (Boolean) -> Unit = {},
     onToggleLiked: (UUID, Boolean) -> Unit = { _, _ -> },
     onNavigateToDetail: (CropImage) -> Unit,
     modifier: Modifier = Modifier
@@ -77,11 +71,25 @@ fun ListUpScreen(
     // -------------------------------------------------------------
     // 【入力および画面の状態管理（State）】
     // -------------------------------------------------------------
-    var topics by remember(items) { mutableStateOf(items) }
     var searchText by remember { mutableStateOf("") }
     var searchVisible by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var currentPage by remember { mutableIntStateOf(0) }
+
+    // MovieDetail (MovieScreen) と同等の絞り込み & ソート状態
+    var selectedSortOption by remember { mutableStateOf(ListSortOption.DATE_DESC) }
+    var selectedClassFilter by remember { mutableStateOf<String?>(null) }
+    var selectedColorFilter by remember { mutableStateOf<ImageColor?>(null) }
+    var isLikedOnlyFilter by remember { mutableStateOf(false) }
+
+    // 動的なクラス・色の選択肢リスト
+    val availableClasses = remember(items) {
+        items.map { it.className }.distinct().sorted()
+    }
+
+    val availableColors = remember(items) {
+        items.map { it.color }.distinct().sortedBy { it.name }
+    }
 
     fun applySearch(text: String, currentItems: List<CropImage>): List<CropImage> {
         if (text.isBlank()) return currentItems
@@ -102,24 +110,57 @@ fun ListUpScreen(
             }
     }
 
-    // 検索入力時の絞り込み・優先度ソート処理
-    fun onSearchTextChange(newText: String) {
-        searchText = newText
-        topics = applySearch(newText, items)
+    // フィルター & ソートが適用された結果のリスト
+    val filteredAndSortedItems = remember(
+        items,
+        searchText,
+        selectedSortOption,
+        selectedClassFilter,
+        selectedColorFilter,
+        isLikedOnlyFilter
+    ) {
+        var list = items
+
+        // 1. 検索テキストフィルタ
+        if (searchText.isNotBlank()) {
+            list = applySearch(searchText, list)
+        }
+
+        // 2. いいね絞り込み
+        if (isLikedOnlyFilter) {
+            list = list.filter { it.isLiked }
+        }
+
+        // 3. クラス絞り込み
+        if (selectedClassFilter != null) {
+            list = list.filter { it.className.equals(selectedClassFilter, ignoreCase = true) }
+        }
+
+        // 4. 色絞り込み
+        if (selectedColorFilter != null) {
+            list = list.filter { it.color == selectedColorFilter }
+        }
+
+        // 5. ソート処理
+        when (selectedSortOption) {
+            ListSortOption.DATE_DESC -> list.sortedByDescending { if (it.realTime > 0L) it.realTime else it.fileTime.toLong() }
+            ListSortOption.DATE_ASC -> list.sortedBy { if (it.realTime > 0L) it.realTime else it.fileTime.toLong() }
+            ListSortOption.NAME_ASC -> list.sortedBy { it.japaneseClassName }
+            ListSortOption.NAME_DESC -> list.sortedByDescending { it.japaneseClassName }
+        }
+    }
+
+    // 検索・フィルター変更時にページを0にリセット
+    LaunchedEffect(filteredAndSortedItems.size) {
         currentPage = 0
     }
 
-    LaunchedEffect(items) {
-        topics = applySearch(searchText, items)
-        currentPage = 0
+    val totalPages = remember(filteredAndSortedItems) {
+        maxOf(1, ceil(filteredAndSortedItems.size / itemsPerPage.toDouble()).toInt())
     }
 
-    val totalPages = remember(topics) {
-        maxOf(1, ceil(topics.size / itemsPerPage.toDouble()).toInt())
-    }
-
-    val pagedTopics = remember(topics, currentPage) {
-        topics.drop(currentPage * itemsPerPage).take(itemsPerPage)
+    val pagedTopics = remember(filteredAndSortedItems, currentPage) {
+        filteredAndSortedItems.drop(currentPage * itemsPerPage).take(itemsPerPage)
     }
 
     Scaffold(
@@ -130,40 +171,34 @@ fun ListUpScreen(
                     expanded = menuExpanded,
                     onExpandedChange = { menuExpanded = it },
                     onSearchClick = { searchVisible = !searchVisible },
-                    onSortByname = {
-                        topics = topics.sortedBy { it.className }
+                    selectedSortOption = selectedSortOption,
+                    onSortOptionSelected = {
+                        selectedSortOption = it
                         currentPage = 0
                     },
-                    onSortByDate = {
-                        topics = topics.sortedBy { if (it.realTime > 0L) it.realTime else it.fileTime.toLong() }
+                    selectedClassFilter = selectedClassFilter,
+                    availableClasses = availableClasses,
+                    onClassFilterSelected = {
+                        selectedClassFilter = it
                         currentPage = 0
                     },
-                    onFilterLiked = {
-                        topics = items.filter { it.isLiked }
+                    selectedColorFilter = selectedColorFilter,
+                    availableColors = availableColors,
+                    onColorFilterSelected = {
+                        selectedColorFilter = it
                         currentPage = 0
                     },
-                    onFilterBlack = {
-                        topics = items.filter { it.color == ImageColor.Black }
+                    isLikedOnlyFilter = isLikedOnlyFilter,
+                    onLikedFilterToggled = {
+                        isLikedOnlyFilter = !isLikedOnlyFilter
                         currentPage = 0
                     },
-                    onFilterWhite = {
-                        topics = items.filter { it.color == ImageColor.White }
-                        currentPage = 0
-                    },
-                    onFilterTime100 = {
-                        topics = items.filter { it.fileTime <= 100 }
-                        currentPage = 0
-                    },
-                    onFilterTime1000 = {
-                        topics = items.filter { it.fileTime >= 100 }
-                        currentPage = 0
-                    },
-                    onFiltername = {
-                        topics = items.filter { it.className.lowercase() == "photography" }
-                        currentPage = 0
-                    },
-                    onShowAll = {
-                        topics = items
+                    onResetAllFilters = {
+                        selectedSortOption = ListSortOption.DATE_DESC
+                        selectedClassFilter = null
+                        selectedColorFilter = null
+                        isLikedOnlyFilter = false
+                        searchText = ""
                         currentPage = 0
                     }
                 )
@@ -172,17 +207,20 @@ fun ListUpScreen(
                 if (searchVisible) {
                     SearchInputField(
                         value = searchText,
-                        onValueChange = { onSearchTextChange(it) }
+                        onValueChange = {
+                            searchText = it
+                            currentPage = 0
+                        }
                     )
                 }
             }
         },
         bottomBar = {
-            if (topics.isNotEmpty()) {
+            if (filteredAndSortedItems.isNotEmpty()) {
                 PaginationBar(
                     currentPage = currentPage,
                     totalPages = totalPages,
-                    totalItems = topics.size,
+                    totalItems = filteredAndSortedItems.size,
                     onPrevClick = { if (currentPage > 0) currentPage-- },
                     onNextClick = { if (currentPage < totalPages - 1) currentPage++ }
                 )
@@ -195,13 +233,13 @@ fun ListUpScreen(
                 .padding(padding),
             color = MaterialTheme.colorScheme.background
         ) {
-            if (topics.isEmpty()) {
+            if (filteredAndSortedItems.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (searchText.isNotBlank()) "検索結果が見つかりません" else "検出された画像がありません",
+                        text = if (searchText.isNotBlank()) "検索結果が見つかりません" else "該当する検出画像がありません",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -299,7 +337,7 @@ fun SearchInputField(
 }
 
 /**
- * トップバー（ヘッダー・メニュー）
+ * トップバー（ヘッダー・三点リーダーメニュー）
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -307,16 +345,27 @@ fun MyTopBar(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onSearchClick: () -> Unit,
-    onSortByname: () -> Unit,
-    onSortByDate: () -> Unit,
-    onFilterLiked: () -> Unit,
-    onFilterBlack: () -> Unit,
-    onFilterWhite: () -> Unit,
-    onFilterTime100: () -> Unit,
-    onFilterTime1000: () -> Unit,
-    onShowAll: () -> Unit,
-    onFiltername: () -> Unit
+    selectedSortOption: ListSortOption,
+    onSortOptionSelected: (ListSortOption) -> Unit,
+    selectedClassFilter: String?,
+    availableClasses: List<String>,
+    onClassFilterSelected: (String?) -> Unit,
+    selectedColorFilter: ImageColor?,
+    availableColors: List<ImageColor>,
+    onColorFilterSelected: (ImageColor?) -> Unit,
+    isLikedOnlyFilter: Boolean,
+    onLikedFilterToggled: () -> Unit,
+    onResetAllFilters: () -> Unit
 ) {
+    var currentMenuPage by remember { mutableStateOf(MenuPage.MAIN) }
+
+    // メニューが閉じられたらメインページに戻す
+    LaunchedEffect(expanded) {
+        if (!expanded) {
+            currentMenuPage = MenuPage.MAIN
+        }
+    }
+
     TopAppBar(
         title = { Text("検出画像一覧") },
         actions = {
@@ -326,76 +375,196 @@ fun MyTopBar(
             IconButton(onClick = { onExpandedChange(true) }) {
                 Icon(Icons.Default.MoreVert, contentDescription = "メニュー")
             }
+
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { onExpandedChange(false) }
             ) {
-                Text("ソート", modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.labelSmall)
-                DropdownMenuItem(
-                    text = { Text("名前順") },
-                    onClick = {
-                        onSortByname()
-                        onExpandedChange(false)
+                when (currentMenuPage) {
+                    MenuPage.MAIN -> {
+                        Text(
+                            text = "ソート・フィルター",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        // 1. ソート
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("🔀 ソート")
+                                    Text(
+                                        text = selectedSortOption.label,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            trailingIcon = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                            onClick = { currentMenuPage = MenuPage.SORT }
+                        )
+
+                        // 2. クラス絞り込み (MovieDetail流用)
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("🏷️ クラス絞り込み")
+                                    Text(
+                                        text = selectedClassFilter?.toJapaneseClassName() ?: "すべて",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            trailingIcon = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                            onClick = { currentMenuPage = MenuPage.CLASS }
+                        )
+
+                        // 3. 色絞り込み (MovieDetail流用)
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("🎨 色絞り込み")
+                                    Text(
+                                        text = selectedColorFilter?.displayName ?: "すべて",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            trailingIcon = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                            onClick = { currentMenuPage = MenuPage.COLOR }
+                        )
+
+                        // 4. ❤️ いいねのみ
+                        DropdownMenuItem(
+                            text = { Text(if (isLikedOnlyFilter) "❤️ いいねのみ [ON]" else "🤍 いいねのみ [OFF]") },
+                            trailingIcon = {
+                                if (isLikedOnlyFilter) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                            },
+                            onClick = {
+                                onLikedFilterToggled()
+                                onExpandedChange(false)
+                            }
+                        )
+
+                        HorizontalDivider()
+
+                        // 5. すべてリセット
+                        DropdownMenuItem(
+                            text = { Text("🔄 条件をクリア (すべて表示)", color = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                onResetAllFilters()
+                                onExpandedChange(false)
+                            }
+                        )
                     }
-                )
-                DropdownMenuItem(
-                    text = { Text("時間順") },
-                    onClick = {
-                        onSortByDate()
-                        onExpandedChange(false)
+
+                    MenuPage.SORT -> {
+                        DropdownMenuItem(
+                            text = { Text("⬅ 戻る", fontWeight = FontWeight.Bold) },
+                            onClick = { currentMenuPage = MenuPage.MAIN }
+                        )
+                        HorizontalDivider()
+                        ListSortOption.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                trailingIcon = {
+                                    if (selectedSortOption == option) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                },
+                                onClick = {
+                                    onSortOptionSelected(option)
+                                    onExpandedChange(false)
+                                }
+                            )
+                        }
                     }
-                )
-                HorizontalDivider()
-                Text("フィルタ", modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.labelSmall)
-                DropdownMenuItem(
-                    text = { Text("❤️ いいねのみ") },
-                    onClick = {
-                        onFilterLiked()
-                        onExpandedChange(false)
+
+                    MenuPage.CLASS -> {
+                        DropdownMenuItem(
+                            text = { Text("⬅ 戻る", fontWeight = FontWeight.Bold) },
+                            onClick = { currentMenuPage = MenuPage.MAIN }
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("すべてのクラス") },
+                            trailingIcon = {
+                                if (selectedClassFilter == null) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                            },
+                            onClick = {
+                                onClassFilterSelected(null)
+                                onExpandedChange(false)
+                            }
+                        )
+                        availableClasses.forEach { className ->
+                            DropdownMenuItem(
+                                text = { Text(className.toJapaneseClassName()) },
+                                trailingIcon = {
+                                    if (selectedClassFilter == className) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                },
+                                onClick = {
+                                    onClassFilterSelected(className)
+                                    onExpandedChange(false)
+                                }
+                            )
+                        }
                     }
-                )
-                DropdownMenuItem(
-                    text = { Text("黒色のみ") },
-                    onClick = {
-                        onFilterBlack()
-                        onExpandedChange(false)
+
+                    MenuPage.COLOR -> {
+                        DropdownMenuItem(
+                            text = { Text("⬅ 戻る", fontWeight = FontWeight.Bold) },
+                            onClick = { currentMenuPage = MenuPage.MAIN }
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("すべての色") },
+                            trailingIcon = {
+                                if (selectedColorFilter == null) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                            },
+                            onClick = {
+                                onColorFilterSelected(null)
+                                onExpandedChange(false)
+                            }
+                        )
+                        availableColors.forEach { color ->
+                            DropdownMenuItem(
+                                text = { Text(color.displayName) },
+                                trailingIcon = {
+                                    if (selectedColorFilter == color) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                },
+                                onClick = {
+                                    onColorFilterSelected(color)
+                                    onExpandedChange(false)
+                                }
+                            )
+                        }
                     }
-                )
-                DropdownMenuItem(
-                    text = { Text("白色のみ") },
-                    onClick = {
-                        onFilterWhite()
-                        onExpandedChange(false)
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text("100未満") },
-                    onClick = {
-                        onFilterTime100()
-                        onExpandedChange(false)
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text("100以上") },
-                    onClick = {
-                        onFilterTime1000()
-                        onExpandedChange(false)
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text("photographyのみ") },
-                    onClick = {
-                        onFiltername()
-                        onExpandedChange(false)
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text("すべて表示") },
-                    onClick = {
-                        onShowAll()
-                        onExpandedChange(false)
-                    }
-                )
+                }
             }
         }
     )
@@ -456,64 +625,53 @@ fun TopicCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(110.dp)
+                    .aspectRatio(1f)
             ) {
                 AsyncImage(
                     model = topic.keyFramePath,
-                    contentDescription = topic.className,
+                    contentDescription = topic.japaneseClassName,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
 
-                // 右上のいいね（ハート）ボタン
                 IconButton(
-                    onClick = {
-                        onToggleLiked(topic.id, !topic.isLiked)
-                    },
+                    onClick = { onToggleLiked(topic.id, !topic.isLiked) },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(4.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), shape = CircleShape)
                         .size(32.dp)
-                        .background(
-                            color = Color.Black.copy(alpha = 0.45f),
-                            shape = CircleShape
-                        )
                 ) {
                     Icon(
                         imageVector = if (topic.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = "Favorite",
-                        tint = if (topic.isLiked) Color(0xFFE53935) else Color.White,
+                        tint = if (topic.isLiked) Color.Red else Color.White,
                         modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
             Column(modifier = Modifier.padding(8.dp)) {
+                Text(
+                    text = topic.japaneseClassName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = topic.japaneseClassName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1
+                        text = "色: ${topic.color.displayName}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(
-                        text = topic.color.displayName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
                     Text(
                         text = formattedTime,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }

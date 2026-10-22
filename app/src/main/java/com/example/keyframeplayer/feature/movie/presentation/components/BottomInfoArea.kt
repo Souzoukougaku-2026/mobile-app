@@ -12,10 +12,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -55,25 +58,48 @@ fun BottomInfoArea(
     onSwipeLeft: (CropImage?) -> Unit = {},
     onSwipeRight: (CropImage?) -> Unit = {},
     onKeyframeLikedStateChanged: (UUID, Boolean) -> Unit = { _, _ -> },
+    onSeekToKeyframe: (CropImage) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // 1. クラス & 色 & いいね フィルター適用
+    // 1. クラス & 色 & いいね フィルター適用 (時間昇順ソート)
     val filteredKeyframes = remember(keyframes, selectedClassFilter, selectedColorFilter, isLikedFilterOnly) {
-        keyframes.filter { item ->
-            (selectedClassFilter == null || item.className == selectedClassFilter) &&
-            (selectedColorFilter == null || item.color == selectedColorFilter) &&
-            (!isLikedFilterOnly || item.isLiked)
+        keyframes
+            .filter { item ->
+                (selectedClassFilter == null || item.className == selectedClassFilter) &&
+                (selectedColorFilter == null || item.color == selectedColorFilter) &&
+                (!isLikedFilterOnly || item.isLiked)
+            }
+            .sortedBy { it.realTime }
+    }
+
+    // 手動選択中のキーフレーム ID
+    var selectedKeyframeId by remember { mutableStateOf<UUID?>(activeKeyframe?.id) }
+
+    // 外部（アクティブキーフレームなど）からの選択変更の同期
+    LaunchedEffect(activeKeyframe?.id) {
+        if (activeKeyframe != null) {
+            selectedKeyframeId = activeKeyframe.id
         }
     }
 
-    // 2. 現在の動画再生位置・アクティブキーフレームに基づく対象キーフレームの抽出
-    val currentKeyframe = remember(filteredKeyframes, activeKeyframe, realTimeMs) {
-        if (activeKeyframe != null && filteredKeyframes.contains(activeKeyframe)) {
-            activeKeyframe
-        } else if (realTimeMs > 0L && filteredKeyframes.isNotEmpty()) {
-            filteredKeyframes.minByOrNull { abs(it.realTime - realTimeMs) }
+    // 2. 現在の選択キーフレーム判定 (絞り込み等で範囲外になった場合は、これ以降の時間の中で最初のものに変更)
+    val currentKeyframe = remember(filteredKeyframes, selectedKeyframeId) {
+        if (filteredKeyframes.isEmpty()) return@remember null
+
+        val exactMatch = filteredKeyframes.find { it.id == selectedKeyframeId }
+        if (exactMatch != null) {
+            exactMatch
         } else {
-            filteredKeyframes.firstOrNull()
+            // 範囲外になった場合: これ以降の時間の中で最初のものを選択
+            val currentRefTime = keyframes.find { it.id == selectedKeyframeId }?.realTime ?: realTimeMs
+            filteredKeyframes.firstOrNull { it.realTime >= currentRefTime }
+                ?: filteredKeyframes.lastOrNull()
+        }
+    }
+
+    LaunchedEffect(currentKeyframe?.id) {
+        if (currentKeyframe != null && selectedKeyframeId != currentKeyframe.id) {
+            selectedKeyframeId = currentKeyframe.id
         }
     }
 
@@ -85,8 +111,9 @@ fun BottomInfoArea(
     ) {
         if (currentKeyframe != null) {
             val currentIndex = filteredKeyframes.indexOf(currentKeyframe)
+            val totalCount = filteredKeyframes.size
 
-            // ヘッダー (タイトル & お気に入り切り替えボタン)
+            // ヘッダー: タイトル & 操作ボタン列 ( ◀ 左矢印 | ❤️ ハート | ▶️ 再生 | ▶ 右矢印 )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -94,23 +121,75 @@ fun BottomInfoArea(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-//                Text(
-//                    text = "📸 検出オブジェクト詳細 (${currentIndex + 1} / ${filteredKeyframes.size}件)",
-//                    style = MaterialTheme.typography.titleMedium,
-//                    fontWeight = FontWeight.Bold,
-//                    color = MaterialTheme.colorScheme.primary
-//                )
+                Text(
+                    text = "📸 検出オブジェクト (${currentIndex + 1} / $totalCount)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
 
-                IconButton(
-                    onClick = {
-                        onKeyframeLikedStateChanged(currentKeyframe.id, !currentKeyframe.isLiked)
-                    }
+                // 操作ボタン列
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Icon(
-                        imageVector = if (currentKeyframe.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Toggle Favorite",
-                        tint = if (currentKeyframe.isLiked) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    // ◀ 左矢印ボタン (前のデータ)
+                    IconButton(
+                        onClick = {
+                            if (currentIndex > 0) {
+                                selectedKeyframeId = filteredKeyframes[currentIndex - 1].id
+                            }
+                        },
+                        enabled = currentIndex > 0
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "前の画像",
+                            tint = if (currentIndex > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                    }
+
+                    // ❤️ ハートボタン (いいね切替)
+                    IconButton(
+                        onClick = {
+                            onKeyframeLikedStateChanged(currentKeyframe.id, !currentKeyframe.isLiked)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (currentKeyframe.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "いいね切替",
+                            tint = if (currentKeyframe.isLiked) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // ▶️ 試聴 (再生位置移動) ボタン
+                    IconButton(
+                        onClick = {
+                            onSeekToKeyframe(currentKeyframe)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "動画の該当位置へ移動",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // ▶ 右矢印ボタン (次のデータ)
+                    IconButton(
+                        onClick = {
+                            if (currentIndex >= 0 && currentIndex < totalCount - 1) {
+                                selectedKeyframeId = filteredKeyframes[currentIndex + 1].id
+                            }
+                        },
+                        enabled = currentIndex >= 0 && currentIndex < totalCount - 1
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "次の画像",
+                            tint = if (currentIndex >= 0 && currentIndex < totalCount - 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                    }
                 }
             }
 

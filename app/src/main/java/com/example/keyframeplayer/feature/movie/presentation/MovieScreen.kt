@@ -318,17 +318,11 @@ fun MovieScreen(
                         isLikedFilterOnly = uiState.isLikedFilterOnly,
                         realTimeMs = uiState.currentRealTimeMs,
                         onKeyframeLikedStateChanged = onKeyframeLikedStateChanged,
-                        onSwipeLeft = { cropImage ->
-                            // NOPE スワイプ時の動作
-                        },
-                        onSwipeRight = { cropImage ->
-                            // LIKE スワイプ時の動作 (該当キーフレーム位置へシーク)
-                            cropImage?.let {
-                                val progress = if (uiState.totalRealDurationMs > 0L) {
-                                    ((it.realTime - uiState.minRealTimeMs).toFloat() / uiState.totalRealDurationMs.toFloat()).coerceIn(0f, 1f)
-                                } else 0f
-                                handleProgressTapped(progress)
-                            }
+                        onSeekToKeyframe = { cropImage ->
+                            val progress = if (uiState.totalRealDurationMs > 0L) {
+                                ((cropImage.realTime - uiState.minRealTimeMs).toFloat() / uiState.totalRealDurationMs.toFloat()).coerceIn(0f, 1f)
+                            } else 0f
+                            handleProgressTapped(progress)
                         }
                     )
                 }
