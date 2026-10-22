@@ -350,7 +350,8 @@ class MovieViewModel @Inject constructor(
     fun onProgressTapped(progress: Float) {
         val state = _uiState.value
         val minRealTimeMs = state.minRealTimeMs
-        val spanMs = maxOf(state.totalRealDurationMs, 24 * 3600 * 1000L)
+        val scaleWindowMs = (state.selectedTimeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+        val spanMs = maxOf(state.totalRealDurationMs, scaleWindowMs)
         val targetRealTimeMs = minRealTimeMs + (progress.coerceIn(0f, 1f) * spanMs).toLong()
 
         val videos = state.videos

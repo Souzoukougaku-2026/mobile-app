@@ -14,7 +14,11 @@ enum class TimeScale(
     ONE_DAY("1日", 86400f, 16f),
     SIX_HOURS("6時間", 21600f, 4f),
     THREE_HOURS("3時間", 10800f, 2f),
-    ONE_HALF_HOURS("1.5時間", 5400f, 1f);
+    ONE_HALF_HOURS("1.5時間", 5400f, 1f),
+    THIRTY_MINUTES("30分", 1800f, 0.333333f),
+    TEN_MINUTES("10分", 600f, 0.111111f),
+    FIVE_MINUTES("5分", 300f, 0.055555f),
+    ONE_MINUTE("1分", 60f, 0.011111f);
 
     val intervalSeconds: Float
         get() = intervalMinutes * 60f
@@ -82,8 +86,8 @@ data class MovieUiState(
 
     val visibleRangeWidth: Float
         get() {
-            val spanMs = maxOf(totalRealDurationMs.toFloat(), 24 * 3600 * 1000f)
             val scaleWindowMs = selectedTimeScale.totalSeconds * 1000f
+            val spanMs = maxOf(totalRealDurationMs.toFloat(), scaleWindowMs)
             return (scaleWindowMs / spanMs).coerceIn(0.05f, 1f)
         }
 }

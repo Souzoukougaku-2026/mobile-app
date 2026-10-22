@@ -39,7 +39,11 @@ class MLWorker(
         .setProgress(100, 0, false)
 
     override suspend fun doWork(): Result {
-        setForeground(createForegroundInfo())
+        try {
+            setForeground(createForegroundInfo())
+        } catch (e: Exception) {
+            Log.w(TAG, "ForegroundService の起動はスキップされました（通常のバックグラウンドワーカーとして実行します）: ${e.message}")
+        }
 
         // データベースの取得
         val db = Room.databaseBuilder(
@@ -55,7 +59,7 @@ class MLWorker(
         val total = keyFrames.size
 
         if (total == 0) {
-            updateProgressNotification(100)
+            updateProgressNotification(0, 0, 100)
             return Result.success()
         }
 
@@ -97,8 +101,10 @@ class MLWorker(
                     }
                 }
 
-                val progress = (index + 1) * 100 / total
-                updateProgressNotification(progress)
+                val current = index + 1
+                val progress = current * 100 / total
+                Log.i(TAG, "[画像解析・物体検出] キーフレーム処理中: $current/$total 枚 ($progress%)")
+                updateProgressNotification(current, total, progress)
             }
 
             return Result.success()
@@ -110,15 +116,25 @@ class MLWorker(
         }
     }
 
-    private suspend fun updateProgressNotification(progress: Int) {
-        setProgress(workDataOf("progress" to progress))
+    private suspend fun updateProgressNotification(current: Int, total: Int, progress: Int) {
+        setProgress(
+            workDataOf(
+                "progress" to progress,
+                "current" to current,
+                "total" to total
+            )
+        )
 
-        val notification = notificationBuilder
-            .setProgress(100, progress, false)
-            .setContentText("$progress% 完了")
-            .build()
+        try {
+            val notification = notificationBuilder
+                .setProgress(100, progress, false)
+                .setContentText(if (total > 0) "$current/$total 枚 完了 ($progress%)" else "$progress% 完了")
+                .build()
 
-        notificationManager.notify(NOTIFICATION_ID, notification)
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.w(TAG, "通知の更新に失敗しました: ${e.message}")
+        }
     }
 
     private fun createForegroundInfo(): ForegroundInfo {

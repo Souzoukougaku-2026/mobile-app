@@ -38,6 +38,7 @@ import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.presentation.components.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun MovieRoute(
@@ -139,126 +140,198 @@ fun MovieScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(if (isFullScreen) Color.Black else MaterialTheme.colorScheme.background)
-    ) {
-        // --- ヘッダーエリア (OSステータスバーとの重なりを防止) ---
-        if (!isFullScreen) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding(),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "戻る"
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
+    // シーク操作ハンドラ: 動画が無いエリアで止まった場合に、移動方向（右:次の先頭 / 左:前の末尾）に応じてシークし、Snackbarを表示
+    val handleProgressTapped: (Float) -> Unit = { overallProgress ->
+        val scaleWindowMs = (uiState.selectedTimeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+        val spanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
+        val targetRealTimeMs = uiState.minRealTimeMs + (overallProgress * spanMs).toLong()
+
+        val isInVideoRange = uiState.videos.any { video ->
+            targetRealTimeMs in video.realStartTime..video.realEndTime
+        }
+
+        if (!isInVideoRange && uiState.videos.isNotEmpty()) {
+            val isRightDirection = targetRealTimeMs >= uiState.currentRealTimeMs
+
+            if (isRightDirection) {
+                // 右向き (未来方向): 移動した時刻以降で1番最初の動画の「先頭」へジャンプ
+                val candidateVideo = uiState.videos
+                    .filter { it.realStartTime >= targetRealTimeMs }
+                    .minByOrNull { it.realStartTime }
+                    ?: uiState.videos.minByOrNull { it.realStartTime }
+
+                if (candidateVideo != null) {
+                    val targetProgress = if (spanMs > 0L) {
+                        ((candidateVideo.realStartTime - uiState.minRealTimeMs).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                    } else 0f
+
+                    onProgressTapped(targetProgress)
+
+                    coroutineScope.launch {
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        snackbarHostState.showSnackbar(
+                            message = "動画の無いエリアのため、${candidateVideo.name.ifEmpty { "動画" }} の先頭に移動しました",
+                            actionLabel = "閉じる",
+                            duration = SnackbarDuration.Short
                         )
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
-//                    Text(
-//                        text = uiState.videos.firstOrNull()?.name?.ifEmpty { null } ?: "動画詳細・キーフレーム解析",
-//                        style = MaterialTheme.typography.titleMedium,
-//                        fontWeight = FontWeight.Bold,
-//                        maxLines = 1,
-//                        overflow = TextOverflow.Ellipsis,
-//                        color = MaterialTheme.colorScheme.onSurface
-//                    )
+                } else {
+                    onProgressTapped(overallProgress)
+                }
+            } else {
+                // 左向き (過去方向): 移動した時刻より前で1番最後の動画の「末尾 (最後時点)」へジャンプ
+                val candidateVideo = uiState.videos
+                    .filter { it.realEndTime <= targetRealTimeMs }
+                    .maxByOrNull { it.realEndTime }
+                    ?: uiState.videos.maxByOrNull { it.realEndTime }
+
+                if (candidateVideo != null) {
+                    val targetProgress = if (spanMs > 0L) {
+                        ((candidateVideo.realEndTime - uiState.minRealTimeMs).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                    } else 0f
+
+                    onProgressTapped(targetProgress)
+
+                    coroutineScope.launch {
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        snackbarHostState.showSnackbar(
+                            message = "動画の無いエリアのため、${candidateVideo.name.ifEmpty { "動画" }} の末尾に移動しました",
+                            actionLabel = "閉じる",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                } else {
+                    onProgressTapped(overallProgress)
                 }
             }
+        } else {
+            onProgressTapped(overallProgress)
         }
+    }
 
-        // --- ビデオ表示エリア ---
-        Box(
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        },
+        modifier = Modifier.fillMaxSize()
+    ) { innerPadding ->
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (isFullScreen) Modifier.weight(1f) else Modifier.aspectRatio(16f / 9f)
-                )
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(if (isFullScreen) Color.Black else MaterialTheme.colorScheme.background)
         ) {
-            VideoPlayerContainer(
-                exoPlayer = exoPlayer,
-                isFullScreen = isFullScreen,
-                onToggleFullScreen = { isFullScreen = !isFullScreen },
-                onSkipBy = onSkipBy,
-                keyframes = uiState.keyframes
-            )
-        }
+            // --- ヘッダーエリア (OSステータスバーとの重なりを防止) ---
+            if (!isFullScreen) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding(),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 2.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "戻る"
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                }
+            }
 
-        if (!isFullScreen) {
-            Column(
+            // --- ビデオ表示エリア ---
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
+                    .then(
+                        if (isFullScreen) Modifier.weight(1f) else Modifier.aspectRatio(16f / 9f)
+                    )
             ) {
-                // --- 統合グラフ (Unified Graph Area) ---
-                Column(modifier = Modifier.padding(top = 8.dp)) {
-                    Text(
-                        "検出データ集計グラフ",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                VideoPlayerContainer(
+                    exoPlayer = exoPlayer,
+                    isFullScreen = isFullScreen,
+                    onToggleFullScreen = { isFullScreen = !isFullScreen },
+                    onSkipBy = onSkipBy,
+                    keyframes = uiState.keyframes
+                )
+            }
+
+            if (!isFullScreen) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    // --- 統合グラフ (Unified Graph Area) ---
+                    Column(modifier = Modifier.padding(top = 8.dp)) {
+                        Text(
+                            "検出データ集計グラフ",
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+
+                        UnifiedGraphArea(
+                            uiState = uiState,
+                            onProgressTapped = handleProgressTapped,
+                            onTimeScaleSelected = onTimeScaleSelected
+                        )
+
+                        GraphControlArea(
+                            uiState = uiState,
+                            onTimeScaleSelected = onTimeScaleSelected,
+                            onClassFilterSelected = onClassFilterSelected,
+                            onColorFilterSelected = onColorFilterSelected,
+                            onLikedFilterToggled = onLikedFilterToggled
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    TimeLabel(
+                        currentTime = uiState.currentTime,
+                        totalDuration = uiState.totalDurationSeconds,
+                        realTimeMs = uiState.currentRealTimeMs,
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
 
-                    UnifiedGraphArea(
-                        uiState = uiState,
-                        onProgressTapped = onProgressTapped,
-                        onTimeScaleSelected = onTimeScaleSelected
-                    )
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    GraphControlArea(
-                        uiState = uiState,
-                        onTimeScaleSelected = onTimeScaleSelected,
-                        onClassFilterSelected = onClassFilterSelected,
-                        onColorFilterSelected = onColorFilterSelected,
-                        onLikedFilterToggled = onLikedFilterToggled
+                    BottomInfoArea(
+                        currentTime = uiState.currentTime,
+                        activeKeyframe = activeKeyframe,
+                        keyframes = uiState.keyframes,
+                        selectedClassFilter = uiState.selectedClassFilter,
+                        selectedColorFilter = uiState.selectedColorFilter,
+                        isLikedFilterOnly = uiState.isLikedFilterOnly,
+                        realTimeMs = uiState.currentRealTimeMs,
+                        onKeyframeLikedStateChanged = onKeyframeLikedStateChanged,
+                        onSwipeLeft = { cropImage ->
+                            // NOPE スワイプ時の動作
+                        },
+                        onSwipeRight = { cropImage ->
+                            // LIKE スワイプ時の動作 (該当キーフレーム位置へシーク)
+                            cropImage?.let {
+                                val progress = if (uiState.totalRealDurationMs > 0L) {
+                                    ((it.realTime - uiState.minRealTimeMs).toFloat() / uiState.totalRealDurationMs.toFloat()).coerceIn(0f, 1f)
+                                } else 0f
+                                handleProgressTapped(progress)
+                            }
+                        }
                     )
                 }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                TimeLabel(
-                    currentTime = uiState.currentTime,
-                    totalDuration = uiState.totalDurationSeconds,
-                    realTimeMs = uiState.currentRealTimeMs,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                BottomInfoArea(
-                    currentTime = uiState.currentTime,
-                    activeKeyframe = activeKeyframe,
-                    keyframes = uiState.keyframes,
-                    selectedClassFilter = uiState.selectedClassFilter,
-                    selectedColorFilter = uiState.selectedColorFilter,
-                    isLikedFilterOnly = uiState.isLikedFilterOnly,
-                    realTimeMs = uiState.currentRealTimeMs,
-                    onKeyframeLikedStateChanged = onKeyframeLikedStateChanged,
-                    onSwipeLeft = { cropImage ->
-                        // NOPE スワイプ時の動作
-                    },
-                    onSwipeRight = { cropImage ->
-                        // LIKE スワイプ時の動作 (該当キーフレーム位置へシーク)
-                        cropImage?.let {
-                            val progress = if (uiState.totalRealDurationMs > 0L) {
-                                ((it.realTime - uiState.minRealTimeMs).toFloat() / uiState.totalRealDurationMs.toFloat()).coerceIn(0f, 1f)
-                            } else 0f
-                            onProgressTapped(progress)
-                        }
-                    }
-                )
             }
         }
     }

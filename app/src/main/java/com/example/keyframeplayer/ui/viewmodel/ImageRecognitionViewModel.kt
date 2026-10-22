@@ -1,6 +1,7 @@
 package com.example.keyframeplayer.ui.viewmodel
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.OneTimeWorkRequestBuilder
@@ -46,6 +47,9 @@ class ImageRecognitionViewModel @Inject constructor(
     private val _progress = MutableStateFlow(0f)
     val progress = _progress.asStateFlow()
 
+    private val _statusText = MutableStateFlow("")
+    val statusText = _statusText.asStateFlow()
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage = _errorMessage.asStateFlow()
 
@@ -55,6 +59,7 @@ class ImageRecognitionViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             _progress.value = 0f
+            _statusText.value = "処理準備中..."
             _errorMessage.value = null
 
             try {
@@ -108,6 +113,7 @@ class ImageRecognitionViewModel @Inject constructor(
                     // フェーズ 1: キーフレーム抽出とキーフレームDB保存
                     for ((index, video) in videoInfos.withIndex()) {
                         ensureActive()
+                        val videoNum = index + 1
 
                         val savedFrames = mutableListOf<Pair<Long, String>>()
 
@@ -115,7 +121,7 @@ class ImageRecognitionViewModel @Inject constructor(
                             context = context,
                             uri = video.uri,
                             limit = 86400
-                        ) { timeUs, bitmap ->
+                        ) { currentFrame, totalFrames, timeUs, bitmap ->
                             ensureActive()
 
                             val path = saveBitmapToInternalStorage(
@@ -126,6 +132,10 @@ class ImageRecognitionViewModel @Inject constructor(
                             if (path != null) {
                                 savedFrames.add(timeUs to path)
                             }
+
+                            val msg = "KeyFrame抽出: 動画 $videoNum/$videoTotal 本目 ($currentFrame/$totalFrames 枚)"
+                            _statusText.value = msg
+                            Log.d("ImageRecognitionVM", msg)
                         }
 
                         val keyFrameEntities = mutableListOf<KeyFrameEntity>()
@@ -149,15 +159,19 @@ class ImageRecognitionViewModel @Inject constructor(
                             keyFrameDao.insertKeyFrames(keyFrameEntities)
                         }
 
-                        _progress.value = 0.2f * (index + 1).toFloat() / videoTotal
+                        _progress.value = 0.2f * videoNum.toFloat() / videoTotal
                     }
 
                     if (videoInfos.isEmpty()) {
                         _progress.value = 1f
+                        _statusText.value = "完了"
                         return@withContext
                     }
 
                     // フェーズ 2: 物体検出 Worker (MLWorker) の起動と進捗監視
+                    _statusText.value = "画像解析・物体検出準備中..."
+                    Log.i("ImageRecognitionVM", "[画像解析・物体検出] MLWorker を開始します")
+
                     val workManager = WorkManager.getInstance(context)
                     val request = OneTimeWorkRequestBuilder<MLWorker>()
                         .build()
@@ -168,11 +182,21 @@ class ImageRecognitionViewModel @Inject constructor(
                         .getWorkInfoByIdFlow(request.id)
                         .first { workInfo ->
                             if (workInfo != null) {
+                                val current = workInfo.progress.getInt("current", 0)
+                                val total = workInfo.progress.getInt("total", 0)
                                 val workerProgress = workInfo.progress
                                     .getInt("progress", 0)
                                     .coerceIn(0, 100) / 100f
 
                                 _progress.value = 0.2f + workerProgress * 0.8f
+
+                                if (total > 0) {
+                                    val msg = "画像解析・物体検出: $current/$total 枚"
+                                    _statusText.value = msg
+                                    Log.d("ImageRecognitionVM", "$msg (${(workerProgress * 100).toInt()}%)")
+                                } else {
+                                    _statusText.value = "画像解析・物体検出中..."
+                                }
                             }
 
                             workInfo?.state?.isFinished == true
@@ -181,14 +205,18 @@ class ImageRecognitionViewModel @Inject constructor(
                     when (finishedWorkInfo.state) {
                         WorkInfo.State.SUCCEEDED -> {
                             _progress.value = 1f
+                            _statusText.value = "処理完了"
+                            Log.i("ImageRecognitionVM", "すべての処理が正常に完了しました")
                         }
 
                         WorkInfo.State.FAILED -> {
                             _errorMessage.value = "画像認識に失敗しました。"
+                            Log.e("ImageRecognitionVM", "画像認識処理が失敗しました")
                         }
 
                         WorkInfo.State.CANCELLED -> {
                             _errorMessage.value = "画像認識がキャンセルされました。"
+                            Log.w("ImageRecognitionVM", "画像認識処理がキャンセルされました")
                         }
 
                         else -> Unit
@@ -198,6 +226,7 @@ class ImageRecognitionViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "処理中にエラーが発生しました。"
+                Log.e("ImageRecognitionVM", "エラーが発生しました", e)
             } finally {
                 _isLoading.value = false
             }

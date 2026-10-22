@@ -8,7 +8,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.keyframeplayer.ui.viewmodel.ImageRecognitionViewModel
 import com.example.keyframeplayer.util.VideoInfo
@@ -27,54 +26,72 @@ fun VideoKeyFrameLoadingScreen(
         viewModel.startProcessing(videoInfos)
     }
 
-    // 2. ViewModel から「処理中か？」「今何％か？」の状態をリアルタイムに受け取る
+    // 2. ViewModel から「処理中か？」「今何％か？」「詳細ステータス」の状態をリアルタイムに受け取る
     val isLoading by viewModel.isLoading.collectAsState()
     val progress by viewModel.progress.collectAsState()
+    val statusText by viewModel.statusText.collectAsState()
 
     // 3. 処理完了の判定（ローディング中でなく、進捗が100%に達しているか）
     val isCompleted = !isLoading && progress >= 1.0f
 
     // 4. 状態に応じて画面を分岐描画する
     if (isCompleted) {
-        // 処理完了時は ListUpScreen を描画
-       /* ListUpScreen(
-            modifier = Modifier.fillMaxSize()
-        )*/
-        LaunchedEffect(Unit) { onFinished() }// ListUpScreen() を呼び出す代わりにコールバックを実行
+        LaunchedEffect(Unit) { onFinished() }
     } else {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // --- 通常の画面コンテンツ ---
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {}
-
-            // --- 処理中のオーバーレイ表示 ---
-            // isLoading が true のときだけ、画面全体に薄暗い膜と円状の進捗バーを重ねる
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
             if (isLoading) {
-                Box(
+                ElevatedCard(
                     modifier = Modifier
-                        .fillMaxSize(), //.background(Color.Black.copy(alpha = 0.4f)), // 背景を40%の黒透過に
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth(0.85f)
+                        .padding(16.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 6.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        // 円状の進捗バー（progressには 0.0〜1.0 の値が入る）
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
                         CircularProgressIndicator(
                             progress = { progress },
-                            modifier = Modifier.size(100.dp),
-                            strokeWidth = 8.dp
+                            modifier = Modifier.size(80.dp),
+                            strokeWidth = 6.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(20.dp))
 
-                        // 「45% 処理中...」のようにテキスト表示
                         Text(
-                            text = "${(progress * 100).toInt()}% 処理中...",
-                            color = Color.Black
+                            text = "${(progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.primary
                         )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        if (statusText.isNotEmpty()) {
+                            Text(
+                                text = statusText,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        } else {
+                            Text(
+                                text = "動画を処理中...",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
             }

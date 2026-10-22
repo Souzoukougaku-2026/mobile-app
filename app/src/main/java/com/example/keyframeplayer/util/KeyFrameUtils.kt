@@ -26,11 +26,13 @@ object KeyFrameUtils {
         context: Context,
         uri: Uri,
         limit: Int = 10,
-        onFrame: suspend (timeUs: Long, bitmap: Bitmap) -> Unit
+        onFrame: suspend (currentFrame: Int, totalFrames: Int, timeUs: Long, bitmap: Bitmap) -> Unit
     ) {
         val timesUs = getKeyframeTimes(context, uri)
         if (timesUs.isEmpty()) return
 
+        val targetTimes = timesUs.take(limit)
+        val totalFrames = targetTimes.size
         val retriever = MediaMetadataRetriever()
 
         try {
@@ -41,14 +43,15 @@ object KeyFrameUtils {
                 return
             }
 
-            for (timeUs in timesUs.take(limit)) {
+            for ((index, timeUs) in targetTimes.withIndex()) {
+                val currentFrame = index + 1
                 val bitmap = retriever.getFrameAtTime(
                     timeUs,
                     MediaMetadataRetriever.OPTION_CLOSEST_SYNC
                 ) ?: continue
 
                 try {
-                    onFrame(timeUs, bitmap)
+                    onFrame(currentFrame, totalFrames, timeUs, bitmap)
                 } finally {
                     if (!bitmap.isRecycled) {
                         bitmap.recycle()
