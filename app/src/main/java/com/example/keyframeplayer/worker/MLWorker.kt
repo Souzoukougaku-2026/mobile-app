@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
@@ -16,6 +17,7 @@ import androidx.work.workDataOf
 import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.data.database.AppDatabase
 import com.example.keyframeplayer.core.data.database.entity.CropImageEntity
+import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.detector.ObjectDetector
 import com.example.keyframeplayer.detector.detectDominantColor
 import java.util.UUID
@@ -37,6 +39,17 @@ class MLWorker(
         .setSmallIcon(R.drawable.ic_launcher_foreground)
         .setOngoing(true)
         .setProgress(100, 0, false)
+
+    fun detectColor(bitmap: Bitmap, left: Int, top: Int, right: Int, bottom: Int): ImageColor{
+        val cropped = Bitmap.createBitmap(
+            bitmap,
+            left,
+            top,
+            right - left,
+            bottom - top
+        )
+        return cropped.detectDominantColor()
+    }
 
     override suspend fun doWork(): Result {
         try {
@@ -70,7 +83,6 @@ class MLWorker(
                 val bitmap = BitmapFactory.decodeFile(keyFrame.keyFramePath)
                 if (bitmap != null) {
                     try {
-                        val dominantColor = bitmap.detectDominantColor()
                         val detections = detector.runDetect(bitmap)
 
                         val cropImageEntities = detections.map { detection ->
@@ -78,7 +90,13 @@ class MLWorker(
                                 id = UUID.randomUUID(),
                                 className = detection.classname,
                                 score = detection.score.toDouble(),
-                                color = dominantColor.id,
+                                color = detectColor(
+                                    bitmap,
+                                    detection.bbox[0].toInt(),
+                                    detection.bbox[1].toInt(),
+                                    detection.bbox[2].toInt(),
+                                    detection.bbox[3].toInt()
+                                ).id,
                                 bboxLeft = detection.bbox[0].toInt(),
                                 bboxTop = detection.bbox[1].toInt(),
                                 bboxRight = detection.bbox[2].toInt(),
