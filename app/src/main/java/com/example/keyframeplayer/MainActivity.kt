@@ -171,8 +171,11 @@ fun AppNavigation(
         composable("list") {
             val listViewModel: ListViewModel = hiltViewModel()
             val uiState by listViewModel.uiState.collectAsStateWithLifecycle()
+            val processingState by listViewModel.processingProgressState.collectAsStateWithLifecycle()
+
             ListUpScreen(
                 items = uiState.items,
+                processingProgressState = processingState,
                 onSortByDate = { isAsc -> listViewModel.setSortOrder(isAsc) },
                 onToggleLiked = { id, isLiked -> listViewModel.toggleLiked(id, isLiked) },
                 onNavigateToDetail = { image ->

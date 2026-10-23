@@ -34,9 +34,11 @@ import androidx.media3.ui.PlayerView
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.presentation.components.*
+import com.example.keyframeplayer.ui.component.ProcessingProgressBar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -46,9 +48,11 @@ fun MovieRoute(
     onNavigateBack: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val processingState by viewModel.processingProgressState.collectAsStateWithLifecycle()
 
     MovieScreen(
         uiState = uiState,
+        processingProgressState = processingState,
         onNavigateBack = onNavigateBack,
         onTimeChanged = viewModel::onTimeChanged,
         onSkipBy = viewModel::onSkipBy,
@@ -67,6 +71,7 @@ fun MovieRoute(
 @Composable
 fun MovieScreen(
     uiState: MovieUiState,
+    processingProgressState: ProcessingProgressState = ProcessingProgressState(),
     onNavigateBack: () -> Unit = {},
     onTimeChanged: (Float) -> Unit,
     onSkipBy: (Float) -> Unit,
@@ -216,6 +221,13 @@ fun MovieScreen(
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
         },
+        bottomBar = {
+            ProcessingProgressBar(
+                isProcessing = processingProgressState.isProcessing,
+                progress = processingProgressState.progress,
+                statusText = processingProgressState.statusText
+            )
+        },
         modifier = Modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
@@ -224,6 +236,8 @@ fun MovieScreen(
                 .padding(innerPadding)
                 .background(if (isFullScreen) Color.Black else MaterialTheme.colorScheme.background)
         ) {
+            var lastBackClickTime by remember { mutableLongStateOf(0L) }
+
             // --- ヘッダーエリア (OSステータスバーとの重なりを防止) ---
             if (!isFullScreen) {
                 Surface(
@@ -240,7 +254,15 @@ fun MovieScreen(
                             .padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = onNavigateBack) {
+                        IconButton(
+                            onClick = {
+                                val currentTime = System.currentTimeMillis()
+                                if (currentTime - lastBackClickTime >= 800L) {
+                                    lastBackClickTime = currentTime
+                                    onNavigateBack()
+                                }
+                            }
+                        ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "戻る"

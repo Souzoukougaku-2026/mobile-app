@@ -2,6 +2,8 @@ package com.example.keyframeplayer.feature.list.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.keyframeplayer.core.data.repository.ProcessingProgressRepository
+import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.DetectionResult
 import com.example.keyframeplayer.feature.list.domain.ListRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -12,8 +14,11 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ListViewModel @Inject constructor(
-    private val repository: ListRepository
+    private val repository: ListRepository,
+    private val progressRepository: ProcessingProgressRepository
 ) : ViewModel() {
+
+    val processingProgressState: StateFlow<ProcessingProgressState> = progressRepository.progressState
 
     private val _selectedClass = MutableStateFlow<String?>(null)
     private val _selectedColor = MutableStateFlow<Int?>(null)

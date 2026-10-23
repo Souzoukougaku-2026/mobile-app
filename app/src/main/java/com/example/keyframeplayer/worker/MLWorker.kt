@@ -8,19 +8,30 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.room.Room
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.example.keyframeplayer.R
-import com.example.keyframeplayer.core.data.database.AppDatabase
+import com.example.keyframeplayer.core.data.database.dao.CropImageDao
+import com.example.keyframeplayer.core.data.database.dao.KeyFrameDao
 import com.example.keyframeplayer.core.data.database.entity.CropImageEntity
 import com.example.keyframeplayer.detector.ObjectDetector
 import com.example.keyframeplayer.detector.detectDominantColor
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import java.util.UUID
 
 const val TAG = "MLWorker"
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface MLWorkerEntryPoint {
+    fun keyFrameDao(): KeyFrameDao
+    fun cropImageDao(): CropImageDao
+}
 
 class MLWorker(
     private val context: Context,
@@ -45,15 +56,13 @@ class MLWorker(
             Log.w(TAG, "ForegroundService の起動はスキップされました（通常のバックグラウンドワーカーとして実行します）: ${e.message}")
         }
 
-        // データベースの取得
-        val db = Room.databaseBuilder(
+        // Hilt Singleton コンポーネントから共通の DB / DAO インスタンスを取得
+        val entryPoint = EntryPointAccessors.fromApplication(
             context.applicationContext,
-            AppDatabase::class.java,
-            "crop_image_db"
-        ).fallbackToDestructiveMigration().build()
-
-        val keyFrameDao = db.keyFrameDao()
-        val cropImageDao = db.cropImageDao()
+            MLWorkerEntryPoint::class.java
+        )
+        val keyFrameDao = entryPoint.keyFrameDao()
+        val cropImageDao = entryPoint.cropImageDao()
 
         val keyFrames = keyFrameDao.getAllKeyFrames()
         val total = keyFrames.size

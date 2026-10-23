@@ -24,10 +24,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.core.domain.model.japaneseClassName
 import com.example.keyframeplayer.core.domain.model.toJapaneseClassName
+import com.example.keyframeplayer.ui.component.ProcessingProgressBar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -61,6 +63,7 @@ private enum class MenuPage {
 @Composable
 fun ListUpScreen(
     items: List<CropImage>,
+    processingProgressState: ProcessingProgressState = ProcessingProgressState(),
     onSortByDate: (Boolean) -> Unit = {},
     onToggleLiked: (UUID, Boolean) -> Unit = { _, _ -> },
     onNavigateToDetail: (CropImage) -> Unit,
@@ -216,14 +219,22 @@ fun ListUpScreen(
             }
         },
         bottomBar = {
-            if (filteredAndSortedItems.isNotEmpty()) {
-                PaginationBar(
-                    currentPage = currentPage,
-                    totalPages = totalPages,
-                    totalItems = filteredAndSortedItems.size,
-                    onPrevClick = { if (currentPage > 0) currentPage-- },
-                    onNextClick = { if (currentPage < totalPages - 1) currentPage++ }
+            Column {
+                ProcessingProgressBar(
+                    isProcessing = processingProgressState.isProcessing,
+                    progress = processingProgressState.progress,
+                    statusText = processingProgressState.statusText
                 )
+
+                if (filteredAndSortedItems.isNotEmpty()) {
+                    PaginationBar(
+                        currentPage = currentPage,
+                        totalPages = totalPages,
+                        totalItems = filteredAndSortedItems.size,
+                        onPrevClick = { if (currentPage > 0) currentPage-- },
+                        onNextClick = { if (currentPage < totalPages - 1) currentPage++ }
+                    )
+                }
             }
         }
     ) { padding ->

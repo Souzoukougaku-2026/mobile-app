@@ -5,6 +5,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.keyframeplayer.core.data.database.entity.VideoEntity
+import com.example.keyframeplayer.core.data.repository.ProcessingProgressRepository
+import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.domain.MovieRepository
@@ -20,8 +22,11 @@ import javax.inject.Inject
 @HiltViewModel
 class MovieViewModel @Inject constructor(
     private val repository: MovieRepository,
+    private val progressRepository: ProcessingProgressRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    val processingProgressState: StateFlow<ProcessingProgressState> = progressRepository.progressState
 
     private val cropImageIdString: String? = savedStateHandle.get<String>("cropImageId")
     private val initialRealTime: Long = savedStateHandle.get<Long>("realTime") ?: -1L

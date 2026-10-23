@@ -26,73 +26,60 @@ fun VideoKeyFrameLoadingScreen(
         viewModel.startProcessing(videoInfos)
     }
 
-    // 2. ViewModel から「処理中か？」「今何％か？」「詳細ステータス」の状態をリアルタイムに受け取る
-    val isLoading by viewModel.isLoading.collectAsState()
-    val progress by viewModel.progress.collectAsState()
-    val statusText by viewModel.statusText.collectAsState()
+    // 2. ViewModel から「処理中か？」「今何％か？」「詳細ステータス」「キーフレーム抽出完了フラグ」の状態を受け取る
+    val progressState by viewModel.progressState.collectAsState()
 
-    // 3. 処理完了の判定（ローディング中でなく、進捗が100%に達しているか）
-    val isCompleted = !isLoading && progress >= 1.0f
+    // 3. 画面遷移判定: キーフレーム抽出が完了したか、または全処理が完了したらリスト画面へ遷移
+    val shouldNavigateToList = progressState.isKeyFrameExtractionFinished || (!progressState.isProcessing && progressState.progress >= 1.0f)
 
-    // 4. 状態に応じて画面を分岐描画する
-    if (isCompleted) {
+    if (shouldNavigateToList) {
         LaunchedEffect(Unit) { onFinished() }
     } else {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            if (isLoading) {
-                ElevatedCard(
+            ElevatedCard(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .padding(16.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                ),
+                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 6.dp)
+            ) {
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth(0.85f)
-                        .padding(16.dp),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ),
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 6.dp)
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier.size(80.dp),
-                            strokeWidth = 6.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
+                    CircularProgressIndicator(
+                        progress = { progressState.progress },
+                        modifier = Modifier.size(80.dp),
+                        strokeWidth = 6.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
-                        Text(
-                            text = "${(progress * 100).toInt()}%",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                    Text(
+                        text = "${(progressState.progress * 100).toInt()}%",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                        if (statusText.isNotEmpty()) {
-                            Text(
-                                text = statusText,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        } else {
-                            Text(
-                                text = "動画を処理中...",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
+                    Text(
+                        text = progressState.statusText.ifEmpty { "動画を準備中..." },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
                 }
             }
         }
