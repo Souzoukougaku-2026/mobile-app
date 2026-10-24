@@ -180,6 +180,11 @@ fun AppNavigation(
                 onToggleLiked = { id, isLiked -> listViewModel.toggleLiked(id, isLiked) },
                 onNavigateToDetail = { image ->
                     navController.navigate("movie?cropImageId=${image.id}&realTime=${image.realTime}")
+                },
+                onNavigateToDirectory = {
+                    navController.navigate("directory_management") {
+                        popUpTo("list") { inclusive = true }
+                    }
                 }
             )
         }

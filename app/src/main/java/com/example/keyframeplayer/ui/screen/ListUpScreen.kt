@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
@@ -67,6 +68,7 @@ fun ListUpScreen(
     onSortByDate: (Boolean) -> Unit = {},
     onToggleLiked: (UUID, Boolean) -> Unit = { _, _ -> },
     onNavigateToDetail: (CropImage) -> Unit,
+    onNavigateToDirectory: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val itemsPerPage = 10
@@ -174,6 +176,7 @@ fun ListUpScreen(
                     expanded = menuExpanded,
                     onExpandedChange = { menuExpanded = it },
                     onSearchClick = { searchVisible = !searchVisible },
+                    onNavigateToDirectory = onNavigateToDirectory,
                     selectedSortOption = selectedSortOption,
                     onSortOptionSelected = {
                         selectedSortOption = it
@@ -356,6 +359,7 @@ fun MyTopBar(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onSearchClick: () -> Unit,
+    onNavigateToDirectory: () -> Unit,
     selectedSortOption: ListSortOption,
     onSortOptionSelected: (ListSortOption) -> Unit,
     selectedClassFilter: String?,
@@ -379,6 +383,14 @@ fun MyTopBar(
 
     TopAppBar(
         title = { Text("検出画像一覧") },
+        navigationIcon = {
+            IconButton(onClick = onNavigateToDirectory) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "動画選択画面へ戻る"
+                )
+            }
+        },
         actions = {
             IconButton(onClick = { onSearchClick() }) {
                 Icon(Icons.Default.Search, contentDescription = "検索")
@@ -620,9 +632,9 @@ fun TopicCard(
     onToggleLiked: (UUID, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val formattedTime = remember(topic.realTime, topic.fileTime) {
+    val formattedDate = remember(topic.realTime, topic.fileTime) {
         if (topic.realTime > 0L) {
-            SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(topic.realTime))
+            SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(topic.realTime))
         } else {
             "${topic.fileTime}s"
         }
@@ -678,7 +690,7 @@ fun TopicCard(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
@@ -690,10 +702,11 @@ fun TopicCard(
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = formattedTime,
+                    text = formattedDate,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
