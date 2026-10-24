@@ -139,7 +139,7 @@ class ProcessingProgressRepository @Inject constructor(
                             savedFrames.add(timeUs to path)
                         }
 
-                        val msg = "KeyFrame抽出: 動画 $videoNum/$videoTotal 本目 ($currentFrame/$totalFrames 枚)"
+                        val msg = "KeyFrame抽出: 動画 $videoNum/$videoTotal 本目\n$currentFrame / $totalFrames 枚"
                         _progressState.update {
                             it.copy(
                                 progress = (0.2f * index.toFloat() / videoTotal.coerceAtLeast(1)) + (0.2f * currentFrame.toFloat() / totalFrames.coerceAtLeast(1) / videoTotal.coerceAtLeast(1)),
@@ -219,7 +219,7 @@ class ProcessingProgressRepository @Inject constructor(
 
                             val overallProgress = 0.2f + workerProgress * 0.8f
                             val msg = if (total > 0) {
-                                "画像解析・物体検出: $current/$total 枚"
+                                "画像解析・物体検出\n$current / $total 枚"
                             } else {
                                 "画像解析・物体検出中..."
                             }

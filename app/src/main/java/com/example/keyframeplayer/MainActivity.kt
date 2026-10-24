@@ -84,8 +84,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // アプリ起動時に DB とストレージ上の画像ファイルをクリア・リフレッシュ
-        clearAppData()
+        // DB 保持のためアプリ起動時の自動クリアは無効化 (必要に応じてコメント解除)
+        // clearAppData()
 
         setContent {
             KeyFramePlayerTheme(dynamicColor = false) {
@@ -113,7 +113,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        clearAppData()
+        // clearAppData()
     }
 
     private fun clearAppData() {

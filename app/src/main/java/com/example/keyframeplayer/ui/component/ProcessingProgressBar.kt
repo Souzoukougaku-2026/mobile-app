@@ -44,7 +44,7 @@ fun ProcessingProgressBar(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (statusText.isNotEmpty()) statusText else "画像解析中...",
+                        text = if (statusText.isNotEmpty()) statusText.replace("\n", " - ") else "画像解析中...",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface,
