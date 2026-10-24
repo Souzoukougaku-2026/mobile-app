@@ -333,9 +333,10 @@ fun UnifiedGraphArea(
                         .width(totalWidth)
                 ) {
                     val primaryColor = MaterialTheme.colorScheme.primary
-                    val noVideoBgColor = MaterialTheme.colorScheme.surfaceContainerLowest
-                    val activeVideoBgColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    val noVideoBgColor = MaterialTheme.colorScheme.surfaceVariant
+                    val activeVideoBgColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
                     val activeBorderColor = primaryColor
+                    val stripeColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
 
                     // 1. ヒストグラム・赤バー描画用 Canvas
                     Canvas(
@@ -438,6 +439,19 @@ fun UnifiedGraphArea(
                             cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
                         )
 
+                        // 動画が存在しない区間を直感的に識別可能にする斜線パターン (Diagonal Hatching)
+                        val stripeSpacing = 16.dp.toPx()
+                        var stripeX = -canvasHeight
+                        while (stripeX < canvasWidth + canvasHeight) {
+                            drawLine(
+                                color = stripeColor,
+                                start = Offset(stripeX, canvasHeight),
+                                end = Offset(stripeX + canvasHeight, 0f),
+                                strokeWidth = 1.5.dp.toPx()
+                            )
+                            stripeX += stripeSpacing
+                        }
+
                         // 2. 動画が存在する範囲 (ハイライト領域)
                         for (video in uiState.videos) {
                             val vStart = video.realStartTime
@@ -459,13 +473,13 @@ fun UnifiedGraphArea(
                                     color = activeBorderColor,
                                     start = Offset(left, 0f),
                                     end = Offset(left, canvasHeight),
-                                    strokeWidth = 1.5.dp.toPx()
+                                    strokeWidth = 2.5.dp.toPx()
                                 )
                                 drawLine(
                                     color = activeBorderColor,
                                     start = Offset(right, 0f),
                                     end = Offset(right, canvasHeight),
-                                    strokeWidth = 1.5.dp.toPx()
+                                    strokeWidth = 2.5.dp.toPx()
                                 )
                             }
                         }
