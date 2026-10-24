@@ -42,7 +42,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
- * TimeScale に連動した最適な目盛り間隔 (ミリ秒) を取得する拡張関数
+ * TimeScale に連動した主目盛り間隔 (ミリ秒) を取得する拡張関数
  */
 fun TimeScale.getTickIntervalMs(): Long {
     return when (this) {
@@ -59,13 +59,25 @@ fun TimeScale.getTickIntervalMs(): Long {
 }
 
 /**
+ * TimeScale に連動した副目盛り（サブ目盛り線）間隔 (ミリ秒) を取得する拡張関数
+ */
+fun TimeScale.getSubTickIntervalMs(): Long? {
+    return when (this) {
+        TimeScale.THREE_DAYS -> 1 * 3600 * 1000L      // 1時間刻み
+        TimeScale.ONE_DAY -> 1 * 3600 * 1000L         // 1時間刻み
+        TimeScale.SIX_HOURS -> 15 * 60 * 1000L        // 15分刻み
+        TimeScale.THREE_HOURS -> 10 * 60 * 1000L      // 10分刻み
+        TimeScale.ONE_HALF_HOURS -> 5 * 60 * 1000L    // 5分刻み
+        TimeScale.THIRTY_MINUTES -> 1 * 60 * 1000L    // 1分刻み
+        TimeScale.TEN_MINUTES -> 15 * 1000L          // 15秒刻み
+        TimeScale.FIVE_MINUTES -> 10 * 1000L          // 10秒刻み
+        TimeScale.ONE_MINUTE -> 2 * 1000L             // 2秒刻み
+    }
+}
+
+/**
  * =========================================================================================
- * 【統合グラフ (Unified Graph Area) - 選択スケール連動・動画強調ハイライト版】
- * =========================================================================================
- * 
- * - 動画が存在する時間帯をプライマリカラーの鮮やかなソリッド背景＆枠線でクッキリと強調表示。
- * - 動画がない時間は暗めの落ち着いたバックグラウンドで明確に差別化。
- * - TimeScale の切替に連動してタイムラインの目盛り幅・間隔が直感的に自動スケーリング。
+ * 【統合グラフ (Unified Graph Area) - 選択スケール完全連動・30分以下短時間精密目盛り対応版】
  * =========================================================================================
  */
 @Composable
@@ -561,11 +573,9 @@ fun UnifiedGraphArea(
                             currentRealTimeMs
                         }
 
-                        val isAtLeastOneAndHalfHours = scaleWindowMs >= 5400 * 1000L
-                        val dateTimeSdf = if (isAtLeastOneAndHalfHours) {
-                            SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
-                        } else {
-                            SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                        val dateTimeSdf = when (timeScale) {
+                            TimeScale.THREE_DAYS, TimeScale.ONE_DAY -> SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
+                            else -> SimpleDateFormat("HH:mm:ss", Locale.getDefault())
                         }
                         val dateTimeText = if (displayMs > 0L) dateTimeSdf.format(Date(displayMs)) else ""
 
@@ -610,7 +620,7 @@ fun UnifiedGraphArea(
 }
 
 /**
- * 画面横スライド・TimeScale に直結・完全連動した動的目盛りラベル
+ * 画面横スライド・TimeScale (30分以下を含む全スケール) に直結・完全連動した動的目盛りラベル
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -620,6 +630,7 @@ fun UnifiedTimeTicks(
 ) {
     val tickTextColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val tickLineColor = MaterialTheme.colorScheme.outline
+    val subTickLineColor = MaterialTheme.colorScheme.outlineVariant
     val timeScale = uiState.selectedTimeScale
 
     Box(
@@ -640,24 +651,47 @@ fun UnifiedTimeTicks(
 
             if (canvasWidth <= 0f || spanMs <= 0L) return@Canvas
 
-            // 選択された TimeScale に完全に連動した目盛り刻み幅を取得
             val intervalMs = timeScale.getTickIntervalMs()
+            val subIntervalMs = timeScale.getSubTickIntervalMs()
 
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
 
+            // 1. 副目盛り（サブ目盛り線）の描画
+            if (subIntervalMs != null) {
+                val firstSubTick = (visibleStartMs / subIntervalMs) * subIntervalMs
+                val lastSubTick = ((visibleEndMs / subIntervalMs) + 1) * subIntervalMs
+                var subTimeMs = firstSubTick
+
+                while (subTimeMs <= lastSubTick && subTimeMs <= maxReal + subIntervalMs) {
+                    if (subTimeMs >= minReal) {
+                        val progress = ((subTimeMs - minReal).toDouble() / spanMs.toDouble()).coerceIn(0.0, 1.0)
+                        val x = (progress * canvasWidth).toFloat()
+
+                        drawLine(
+                            color = subTickLineColor,
+                            start = Offset(x, 0f),
+                            end = Offset(x, 3.dp.toPx()),
+                            strokeWidth = 1.0.dp.toPx()
+                        )
+                    }
+                    subTimeMs += subIntervalMs
+                }
+            }
+
+            // 2. 主目盛り＆数値ラベルの描画
             val firstTick = (visibleStartMs / intervalMs) * intervalMs
             val lastTick = ((visibleEndMs / intervalMs) + 1) * intervalMs
 
             val timeSdf = when (timeScale) {
                 TimeScale.THREE_DAYS, TimeScale.ONE_DAY -> SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-                TimeScale.SIX_HOURS, TimeScale.THREE_HOURS, TimeScale.ONE_HALF_HOURS, TimeScale.THIRTY_MINUTES -> SimpleDateFormat("HH:mm", Locale.getDefault())
-                TimeScale.TEN_MINUTES, TimeScale.FIVE_MINUTES, TimeScale.ONE_MINUTE -> SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                TimeScale.SIX_HOURS, TimeScale.THREE_HOURS, TimeScale.ONE_HALF_HOURS, TimeScale.THIRTY_MINUTES, TimeScale.TEN_MINUTES -> SimpleDateFormat("HH:mm", Locale.getDefault())
+                TimeScale.FIVE_MINUTES, TimeScale.ONE_MINUTE -> SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             }
 
             var tickTimeMs = firstTick
             var lastDrawnX = -1000f
-            val minTextPaddingPx = 40.dp.toPx()
+            val minTextPaddingPx = 35.dp.toPx()
 
             while (tickTimeMs <= lastTick && tickTimeMs <= maxReal + intervalMs) {
                 if (tickTimeMs >= minReal) {
