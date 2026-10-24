@@ -20,6 +20,10 @@ class ImageRecognitionViewModel @Inject constructor(
     val errorMessage = progressState.map { it.errorMessage }
     val isKeyFrameExtractionFinished = progressState.map { it.isKeyFrameExtractionFinished }
 
+    suspend fun hasPersistedData(): Boolean {
+        return progressRepository.hasPersistedData()
+    }
+
     fun startProcessing(videoInfos: List<VideoInfo>) {
         progressRepository.startProcessing(videoInfos)
     }

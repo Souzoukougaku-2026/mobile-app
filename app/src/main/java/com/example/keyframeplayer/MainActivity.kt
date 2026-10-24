@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -30,7 +34,9 @@ import com.example.keyframeplayer.feature.movie.presentation.MovieRoute
 import com.example.keyframeplayer.feature.movie.presentation.MovieViewModel
 import com.example.keyframeplayer.ui.screen.DirectoryManagementScreen
 import com.example.keyframeplayer.ui.screen.ListUpScreen
+import com.example.keyframeplayer.ui.screen.VideoKeyFrameLoadingScreen
 import com.example.keyframeplayer.ui.theme.KeyFramePlayerTheme
+import com.example.keyframeplayer.ui.viewmodel.ImageRecognitionViewModel
 import com.example.keyframeplayer.ui.viewmodel.VideoManagementViewModel
 import com.example.keyframeplayer.util.VideoUtils
 import dagger.hilt.android.AndroidEntryPoint
@@ -144,11 +150,51 @@ fun AppNavigation(
     onChooseClick: () -> Unit
 ) {
     val navController = rememberNavController()
+    val recognitionViewModel: ImageRecognitionViewModel = hiltViewModel()
+    val progressState by recognitionViewModel.progressState.collectAsStateWithLifecycle()
+
+    var startDestination by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val isProcessing = progressState.isProcessing
+        val isKeyFrameDone = progressState.isKeyFrameExtractionFinished
+        val hasData = recognitionViewModel.hasPersistedData()
+
+        val dest = when {
+            // 1. キーフレーム抽出中のバックグラウンド復元 -> Loading 画面へ
+            isProcessing && !isKeyFrameDone -> "loading_restore"
+            // 2. MLWorker（画像認識）中 または 過去に保存されたDBデータが存在する -> リスト表示画面へ
+            isProcessing || hasData -> "list"
+            // 3. データが存在しない初期状態 -> 動画選択画面へ
+            else -> "directory_management"
+        }
+        startDestination = dest
+    }
+
+    val currentStartDest = startDestination ?: return
 
     NavHost(
         navController = navController,
-        startDestination = "directory_management",
+        startDestination = currentStartDest,
     ) {
+        composable("loading_restore") {
+            val currentUri by videoViewModel.selectedUri.collectAsState()
+            val isAccessible by videoViewModel.isAccessible.collectAsState()
+            val videoInfos by videoViewModel.videoInfos.collectAsState()
+
+            VideoKeyFrameLoadingScreen(
+                viewModel = recognitionViewModel,
+                currentUri = currentUri?.toString() ?: "None",
+                isAccessible = isAccessible,
+                videoInfos = videoInfos,
+                onChooseClick = onChooseClick,
+                onFinished = {
+                    navController.navigate("list") {
+                        popUpTo("loading_restore") { inclusive = true }
+                    }
+                }
+            )
+        }
         composable("directory_management") {
             val currentUri by videoViewModel.selectedUri.collectAsState()
             val isAccessible by videoViewModel.isAccessible.collectAsState()

@@ -2,6 +2,7 @@ package com.example.keyframeplayer.core.data.repository
 
 import android.content.Context
 import android.util.Log
+import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
@@ -50,11 +51,135 @@ class ProcessingProgressRepository @Inject constructor(
     private val videoDao: VideoDao,
     @ApplicationContext private val context: Context
 ) {
+    companion object {
+        private const val WORK_NAME = "ml_object_detection_work"
+    }
+
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var processingJob: Job? = null
 
     private val _progressState = MutableStateFlow(ProcessingProgressState())
     val progressState: StateFlow<ProcessingProgressState> = _progressState.asStateFlow()
+
+    init {
+        checkAndRestoreProcessingState()
+    }
+
+    suspend fun hasPersistedData(): Boolean {
+        return try {
+            val videos = videoDao.getAllVideosListOrdered()
+            val keyFrames = keyFrameDao.getAllKeyFrames()
+            videos.isNotEmpty() || keyFrames.isNotEmpty()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun checkAndRestoreProcessingState() {
+        repositoryScope.launch {
+            try {
+                val workManager = WorkManager.getInstance(context)
+                val workInfos = workManager.getWorkInfosForUniqueWork(WORK_NAME).get()
+                val activeWork = workInfos.firstOrNull {
+                    it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
+                }
+
+                if (activeWork != null) {
+                    val current = activeWork.progress.getInt("current", 0)
+                    val total = activeWork.progress.getInt("total", 0)
+                    val workerProgress = activeWork.progress.getInt("progress", 0).coerceIn(0, 100) / 100f
+                    val overallProgress = 0.2f + workerProgress * 0.8f
+
+                    _progressState.update {
+                        it.copy(
+                            isProcessing = true,
+                            progress = overallProgress,
+                            statusText = if (total > 0) "画像解析・物体検出\n$current / $total 枚" else "画像解析・物体検出中...",
+                            isKeyFrameExtractionFinished = true
+                        )
+                    }
+
+                    // バックグラウンドで進行中の MLWorker の監視を開始
+                    observeWorkInfo(activeWork.id)
+                }
+            } catch (e: Exception) {
+                Log.e("ProcessingProgressRepo", "バックグラウンド処理の復元チェック失敗", e)
+            }
+        }
+    }
+
+    private fun observeWorkInfo(workId: UUID) {
+        processingJob?.cancel()
+        processingJob = repositoryScope.launch {
+            try {
+                val workManager = WorkManager.getInstance(context)
+                val finishedWorkInfo = workManager
+                    .getWorkInfoByIdFlow(workId)
+                    .first { workInfo ->
+                        if (workInfo != null) {
+                            val current = workInfo.progress.getInt("current", 0)
+                            val total = workInfo.progress.getInt("total", 0)
+                            val workerProgress = workInfo.progress
+                                .getInt("progress", 0)
+                                .coerceIn(0, 100) / 100f
+
+                            val overallProgress = 0.2f + workerProgress * 0.8f
+                            val msg = if (total > 0) {
+                                "画像解析・物体検出\n$current / $total 枚"
+                            } else {
+                                "画像解析・物体検出中..."
+                            }
+
+                            _progressState.update {
+                                it.copy(
+                                    isProcessing = true,
+                                    progress = overallProgress,
+                                    statusText = msg,
+                                    isKeyFrameExtractionFinished = true
+                                )
+                            }
+                        }
+
+                        workInfo?.state?.isFinished == true
+                    } ?: return@launch
+
+                when (finishedWorkInfo.state) {
+                    WorkInfo.State.SUCCEEDED -> {
+                        _progressState.update {
+                            it.copy(
+                                isProcessing = false,
+                                progress = 1f,
+                                statusText = "処理完了",
+                                isKeyFrameExtractionFinished = true
+                            )
+                        }
+                    }
+
+                    WorkInfo.State.FAILED -> {
+                        _progressState.update {
+                            it.copy(
+                                isProcessing = false,
+                                errorMessage = "画像認識に失敗しました。"
+                            )
+                        }
+                    }
+
+                    WorkInfo.State.CANCELLED -> {
+                        _progressState.update {
+                            it.copy(
+                                isProcessing = false,
+                                errorMessage = "画像認識がキャンセルされました。"
+                            )
+                        }
+                    }
+
+                    else -> Unit
+                }
+            } catch (e: Exception) {
+                Log.e("ProcessingProgressRepo", "WorkInfo監視中のエラー", e)
+            }
+        }
+    }
 
     fun startProcessing(videoInfos: List<VideoInfo>) {
         if (_progressState.value.isProcessing) return
@@ -205,71 +330,13 @@ class ProcessingProgressRepository @Inject constructor(
                 val request = OneTimeWorkRequestBuilder<MLWorker>()
                     .build()
 
-                workManager.enqueue(request)
+                workManager.enqueueUniqueWork(
+                    WORK_NAME,
+                    ExistingWorkPolicy.REPLACE,
+                    request
+                )
 
-                val finishedWorkInfo = workManager
-                    .getWorkInfoByIdFlow(request.id)
-                    .first { workInfo ->
-                        if (workInfo != null) {
-                            val current = workInfo.progress.getInt("current", 0)
-                            val total = workInfo.progress.getInt("total", 0)
-                            val workerProgress = workInfo.progress
-                                .getInt("progress", 0)
-                                .coerceIn(0, 100) / 100f
-
-                            val overallProgress = 0.2f + workerProgress * 0.8f
-                            val msg = if (total > 0) {
-                                "画像解析・物体検出\n$current / $total 枚"
-                            } else {
-                                "画像解析・物体検出中..."
-                            }
-
-                            _progressState.update {
-                                it.copy(
-                                    progress = overallProgress,
-                                    statusText = msg
-                                )
-                            }
-                            Log.d("ProcessingProgressRepo", "$msg (${(overallProgress * 100).toInt()}%)")
-                        }
-
-                        workInfo?.state?.isFinished == true
-                    } ?: error("WorkInfoを取得できませんでした")
-
-                when (finishedWorkInfo.state) {
-                    WorkInfo.State.SUCCEEDED -> {
-                        _progressState.update {
-                            it.copy(
-                                isProcessing = false,
-                                progress = 1f,
-                                statusText = "処理完了"
-                            )
-                        }
-                        Log.i("ProcessingProgressRepo", "すべての処理が正常に完了しました")
-                    }
-
-                    WorkInfo.State.FAILED -> {
-                        _progressState.update {
-                            it.copy(
-                                isProcessing = false,
-                                errorMessage = "画像認識に失敗しました。"
-                            )
-                        }
-                        Log.e("ProcessingProgressRepo", "画像認識処理が失敗しました")
-                    }
-
-                    WorkInfo.State.CANCELLED -> {
-                        _progressState.update {
-                            it.copy(
-                                isProcessing = false,
-                                errorMessage = "画像認識がキャンセルされました。"
-                            )
-                        }
-                        Log.w("ProcessingProgressRepo", "画像認識処理がキャンセルされました")
-                    }
-
-                    else -> Unit
-                }
+                observeWorkInfo(request.id)
 
             } catch (e: CancellationException) {
                 _progressState.update { it.copy(isProcessing = false) }
