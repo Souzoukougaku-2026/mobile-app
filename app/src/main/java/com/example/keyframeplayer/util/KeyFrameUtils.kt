@@ -2,10 +2,13 @@ package com.example.keyframeplayer.util
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -14,22 +17,41 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.UUID
-import android.graphics.BitmapFactory
 
 object KeyFrameUtils {
 
     /**
-     * 動画からキーフレームを1枚ずつ取得し、コールバックに渡す。
+     * 高速化ターゲットサイズ（物体検出・表示用に最適化された解像度）
+     */
+    private const val TARGET_FRAME_SIZE = 640
+
+    /**
+     * キーフレーム間の最小サンプリング間隔 (300ms = 300,000us)
+     */
+    private const val MIN_KEYFRAME_INTERVAL_US = 300_000L
+
+    /**
+     * 動画からキーフレームを1枚ずつ高速に取得し、コールバックに渡す。
      * Bitmapはコールバック実行後にこの関数内で解放する。
      */
     suspend fun forEachKeyframe(
         context: Context,
         uri: Uri,
-        limit: Int = 10,
+        limit: Int = 86400,
         onFrame: suspend (currentFrame: Int, totalFrames: Int, timeUs: Long, bitmap: Bitmap) -> Unit
     ) {
-        val timesUs = getKeyframeTimes(context, uri)
-        if (timesUs.isEmpty()) return
+        val rawTimesUs = getKeyframeTimes(context, uri)
+        if (rawTimesUs.isEmpty()) return
+
+        // 0.3秒未満の過度に連続するキーフレームをフィルタリングして無駄な処理を削減
+        val timesUs = mutableListOf<Long>()
+        var lastAddedUs = -1L
+        for (t in rawTimesUs) {
+            if (lastAddedUs == -1L || (t - lastAddedUs) >= MIN_KEYFRAME_INTERVAL_US) {
+                timesUs.add(t)
+                lastAddedUs = t
+            }
+        }
 
         val targetTimes = timesUs.take(limit)
         val totalFrames = targetTimes.size
@@ -45,10 +67,24 @@ object KeyFrameUtils {
 
             for ((index, timeUs) in targetTimes.withIndex()) {
                 val currentFrame = index + 1
-                val bitmap = retriever.getFrameAtTime(
-                    timeUs,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-                ) ?: continue
+
+                // 高速化: 最初から指定サイズにスケーリングしてデコード (API 27+)
+                val bitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    try {
+                        retriever.getScaledFrameAtTime(
+                            timeUs,
+                            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                            TARGET_FRAME_SIZE,
+                            TARGET_FRAME_SIZE
+                        )
+                    } catch (e: Exception) {
+                        retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    }
+                } else {
+                    retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                }
+
+                if (bitmap == null) continue
 
                 try {
                     onFrame(currentFrame, totalFrames, timeUs, bitmap)
@@ -129,7 +165,7 @@ object KeyFrameUtils {
     }
 
     /**
-     * Bitmapをアプリ内部ストレージにPNG形式で保存し、絶対パスを返す。
+     * Bitmapをアプリ内部ストレージにJPEG形式 (クオリティ 85) で高速保存し、絶対パスを返す。
      */
     fun saveBitmapToInternalStorage(
         context: Context,
@@ -141,13 +177,13 @@ object KeyFrameUtils {
             return null
         }
 
-        val file = File(directory, "${UUID.randomUUID()}.png")
+        val file = File(directory, "${UUID.randomUUID()}.jpg")
 
         return try {
-            FileOutputStream(file).use { outputStream ->
+            BufferedOutputStream(FileOutputStream(file)).use { outputStream ->
                 val saved = bitmap.compress(
-                    Bitmap.CompressFormat.PNG,
-                    100,
+                    Bitmap.CompressFormat.JPEG,
+                    85,
                     outputStream
                 )
 
@@ -195,7 +231,7 @@ object KeyFrameUtils {
     }
 
     /**
-     * PNG画像の絶対パスからBitmapを取得する
+     * 画像の絶対パスからBitmapを取得する
      *
      * @param absolutePath 画像ファイルの絶対パス
      * @return デコードされたBitmap（失敗時、またはファイルが存在しない場合はnull）
@@ -211,5 +247,4 @@ object KeyFrameUtils {
         // パスからBitmapを生成して返す
         return BitmapFactory.decodeFile(file.absolutePath)
     }
-
 }
