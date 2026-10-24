@@ -42,15 +42,30 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
+ * TimeScale に連動した最適な目盛り間隔 (ミリ秒) を取得する拡張関数
+ */
+fun TimeScale.getTickIntervalMs(): Long {
+    return when (this) {
+        TimeScale.THREE_DAYS -> 6 * 3600 * 1000L      // 6時間刻み
+        TimeScale.ONE_DAY -> 3 * 3600 * 1000L         // 3時間刻み
+        TimeScale.SIX_HOURS -> 1 * 3600 * 1000L       // 1時間刻み
+        TimeScale.THREE_HOURS -> 30 * 60 * 1000L      // 30分刻み
+        TimeScale.ONE_HALF_HOURS -> 15 * 60 * 1000L   // 15分刻み
+        TimeScale.THIRTY_MINUTES -> 5 * 60 * 1000L    // 5分刻み
+        TimeScale.TEN_MINUTES -> 1 * 60 * 1000L       // 1分刻み
+        TimeScale.FIVE_MINUTES -> 30 * 1000L          // 30秒刻み
+        TimeScale.ONE_MINUTE -> 10 * 1000L            // 10秒刻み
+    }
+}
+
+/**
  * =========================================================================================
- * 【統合グラフ (Unified Graph Area) - v1/v2 復元シームレス連続スクロール版】
+ * 【統合グラフ (Unified Graph Area) - 選択スケール連動・動画強調ハイライト版】
  * =========================================================================================
  * 
- * - ページ分割 (HorizontalPager) によるページスナップ動作を廃止し、.horizontalScroll(scrollState)
- *   による1枚のシームレスな長尺タイムラインキャンバスとして描画します。
- * - 表示時間スケール (TimeScale: 1日 / 6時間 / 1.5時間) の1画面幅に対して、動画全体の時間幅
- *   (totalRealDurationMs) に比例した全長 (totalWidth) を動的に算定します。
- * - 再生中は赤バーが画面中央付近に来るように scrollState が滑らかに追従スクロールします。
+ * - 動画が存在する時間帯をプライマリカラーの鮮やかなソリッド背景＆枠線でクッキリと強調表示。
+ * - 動画がない時間は暗めの落ち着いたバックグラウンドで明確に差別化。
+ * - TimeScale の切替に連動してタイムラインの目盛り幅・間隔が直感的に自動スケーリング。
  * =========================================================================================
  */
 @Composable
@@ -76,7 +91,7 @@ fun UnifiedGraphArea(
     var isDraggingRedBar by remember { mutableStateOf(false) }
     var localDragX by remember { mutableFloatStateOf(-1f) }
 
-    // 再生位置が変更された場合に scrollState を中央付近へ自動スクロール（手動スクロール/ドラッグ中を除く）
+    // 再生位置が変更された場合に scrollState を中央付近へ自動スクロール
     val currentRealTimeMs = uiState.currentRealTimeMs
     val currentProgress = if (spanMs > 0L) {
         ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
@@ -204,7 +219,6 @@ fun UnifiedGraphArea(
         val viewportWidthPx = constraints.maxWidth.toFloat()
 
         // 表示スケール (scaleWindowMs) に対する全時間軸 (spanMs) の倍率から総横幅を算出
-        // Compose Constraints の上限値オーバーフロー (65,535dp / 262,143px) によるクラッシュを防止するため上限 (3600.dp) にクランプ
         val scaleRatio = spanMs.toFloat() / scaleWindowMs.toFloat()
         val maxAllowedWidth = 3600.dp
         val rawTotalWidth = parentMaxWidth * scaleRatio
@@ -329,14 +343,15 @@ fun UnifiedGraphArea(
                     .horizontalScroll(scrollState)
             ) {
                 Column(
-                    modifier = Modifier
-                        .width(totalWidth)
+                    modifier = Modifier.width(totalWidth)
                 ) {
                     val primaryColor = MaterialTheme.colorScheme.primary
-                    val noVideoBgColor = MaterialTheme.colorScheme.surfaceVariant
+                    // 動画が存在しない背景部分: トーンを抑えたシックなベースカラー
+                    val noVideoBgColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    // 動画が存在する領域: 鮮やかで際立つ強調ハイライトカラー
                     val activeVideoBgColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
                     val activeBorderColor = primaryColor
-                    val stripeColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+                    val activeTopLineColor = primaryColor
 
                     // 1. ヒストグラム・赤バー描画用 Canvas
                     Canvas(
@@ -432,27 +447,14 @@ fun UnifiedGraphArea(
                         val canvasWidth = size.width
                         val canvasHeight = size.height
 
-                        // 1. 全体背景 (動画が存在しない背景区間)
+                        // 1. 全体背景 (動画が存在しない背景区間: トーンを落としたシックなカラー)
                         drawRoundRect(
                             color = noVideoBgColor,
                             size = Size(canvasWidth, canvasHeight),
                             cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
                         )
 
-                        // 動画が存在しない区間を直感的に識別可能にする斜線パターン (Diagonal Hatching)
-                        val stripeSpacing = 16.dp.toPx()
-                        var stripeX = -canvasHeight
-                        while (stripeX < canvasWidth + canvasHeight) {
-                            drawLine(
-                                color = stripeColor,
-                                start = Offset(stripeX, canvasHeight),
-                                end = Offset(stripeX + canvasHeight, 0f),
-                                strokeWidth = 1.5.dp.toPx()
-                            )
-                            stripeX += stripeSpacing
-                        }
-
-                        // 2. 動画が存在する範囲 (ハイライト領域)
+                        // 2. 動画が存在する範囲 (ここを圧倒的にクッキリと強調表示！)
                         for (video in uiState.videos) {
                             val vStart = video.realStartTime
                             val vEnd = video.realEndTime
@@ -461,14 +463,23 @@ fun UnifiedGraphArea(
                                 val endProgress = ((vEnd - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
                                 val left = startProgress * canvasWidth
                                 val right = endProgress * canvasWidth
-                                val width = (right - left).coerceAtLeast(2f)
+                                val width = (right - left).coerceAtLeast(3f)
 
+                                // 鮮やかなハイライト背景で動画存在領域を強調
                                 drawRect(
                                     color = activeVideoBgColor,
                                     topLeft = Offset(left, 0f),
                                     size = Size(width, canvasHeight)
                                 )
 
+                                // 動画領域の上部インジケーターライン
+                                drawRect(
+                                    color = activeTopLineColor,
+                                    topLeft = Offset(left, 0f),
+                                    size = Size(width, 4.dp.toPx())
+                                )
+
+                                // 左右のクッキリした境界線
                                 drawLine(
                                     color = activeBorderColor,
                                     start = Offset(left, 0f),
@@ -586,7 +597,7 @@ fun UnifiedGraphArea(
                         }
                     }
 
-                    // 2. スライド追従・動的タイム目盛り
+                    // 2. 選択された TimeScale に完全自動連動する目盛り
                     UnifiedTimeTicks(
                         uiState = uiState,
                         scrollOffset = scrollState.value.toFloat(),
@@ -599,7 +610,7 @@ fun UnifiedGraphArea(
 }
 
 /**
- * 画面横スライドに対応した動的「日時」目盛りラベル
+ * 画面横スライド・TimeScale に直結・完全連動した動的目盛りラベル
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -608,7 +619,8 @@ fun UnifiedTimeTicks(
     viewportWidthPx: Float
 ) {
     val tickTextColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
-    val tickLineColor = MaterialTheme.colorScheme.outlineVariant
+    val tickLineColor = MaterialTheme.colorScheme.outline
+    val timeScale = uiState.selectedTimeScale
 
     Box(
         modifier = Modifier
@@ -618,37 +630,18 @@ fun UnifiedTimeTicks(
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(22.dp)
+                .height(24.dp)
         ) {
             val canvasWidth = size.width
             val minReal = uiState.minRealTimeMs
-            val scaleWindowMs = (uiState.selectedTimeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+            val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
             val spanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
             val maxReal = minReal + spanMs
 
             if (canvasWidth <= 0f || spanMs <= 0L) return@Canvas
 
-            val minSpacingPx = 70.dp.toPx()
-            val msPerPx = spanMs.toDouble() / canvasWidth.toDouble()
-            val minIntervalMs = (minSpacingPx * msPerPx).toLong()
-
-            val candidateIntervalsMs = listOf(
-                10 * 1000L,           // 10秒
-                30 * 1000L,           // 30秒
-                1 * 60 * 1000L,       // 1分
-                2 * 60 * 1000L,       // 2分
-                5 * 60 * 1000L,       // 5分
-                15 * 60 * 1000L,      // 15分
-                30 * 60 * 1000L,      // 30分
-                60 * 60 * 1000L,      // 1時間
-                2 * 60 * 60 * 1000L,  // 2時間
-                4 * 60 * 60 * 1000L,  // 4時間
-                6 * 60 * 60 * 1000L,  // 6時間
-                12 * 60 * 60 * 1000L, // 12時間
-                24 * 60 * 60 * 1000L  // 24時間
-            )
-            val intervalMs = candidateIntervalsMs.firstOrNull { it >= minIntervalMs }
-                ?: candidateIntervalsMs.last()
+            // 選択された TimeScale に完全に連動した目盛り刻み幅を取得
+            val intervalMs = timeScale.getTickIntervalMs()
 
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
@@ -656,35 +649,33 @@ fun UnifiedTimeTicks(
             val firstTick = (visibleStartMs / intervalMs) * intervalMs
             val lastTick = ((visibleEndMs / intervalMs) + 1) * intervalMs
 
-            val secTimeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-            val minTimeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-            val dateTimeFormat = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-
-            val isAtLeastOneAndHalfHours = scaleWindowMs >= 5400 * 1000L
+            val timeSdf = when (timeScale) {
+                TimeScale.THREE_DAYS, TimeScale.ONE_DAY -> SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
+                TimeScale.SIX_HOURS, TimeScale.THREE_HOURS, TimeScale.ONE_HALF_HOURS, TimeScale.THIRTY_MINUTES -> SimpleDateFormat("HH:mm", Locale.getDefault())
+                TimeScale.TEN_MINUTES, TimeScale.FIVE_MINUTES, TimeScale.ONE_MINUTE -> SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            }
 
             var tickTimeMs = firstTick
             var lastDrawnX = -1000f
+            val minTextPaddingPx = 40.dp.toPx()
 
             while (tickTimeMs <= lastTick && tickTimeMs <= maxReal + intervalMs) {
                 if (tickTimeMs >= minReal) {
                     val progress = ((tickTimeMs - minReal).toDouble() / spanMs.toDouble()).coerceIn(0.0, 1.0)
                     val x = (progress * canvasWidth).toFloat()
 
-                    if (x - lastDrawnX >= 55.dp.toPx() || lastDrawnX < 0f) {
+                    if (x - lastDrawnX >= minTextPaddingPx || lastDrawnX < 0f) {
                         lastDrawnX = x
 
+                        // 主目盛り線
                         drawLine(
                             color = tickLineColor,
                             start = Offset(x, 0f),
-                            end = Offset(x, 5.dp.toPx()),
-                            strokeWidth = 1.2.dp.toPx()
+                            end = Offset(x, 6.dp.toPx()),
+                            strokeWidth = 1.5.dp.toPx()
                         )
 
-                        val label = when {
-                            isAtLeastOneAndHalfHours -> dateTimeFormat.format(Date(tickTimeMs))
-                            scaleWindowMs <= 10 * 60 * 1000L -> secTimeFormat.format(Date(tickTimeMs))
-                            else -> minTimeFormat.format(Date(tickTimeMs))
-                        }
+                        val label = timeSdf.format(Date(tickTimeMs))
 
                         drawContext.canvas.nativeCanvas.drawText(
                             label,
@@ -694,6 +685,7 @@ fun UnifiedTimeTicks(
                                 color = tickTextColor
                                 textSize = 10.dp.toPx()
                                 isAntiAlias = true
+                                isFakeBoldText = true
                                 textAlign = android.graphics.Paint.Align.CENTER
                             }
                         )
