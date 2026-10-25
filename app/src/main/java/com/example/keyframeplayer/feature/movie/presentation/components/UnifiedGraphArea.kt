@@ -220,8 +220,9 @@ fun UnifiedGraphArea(
         val viewportWidthPx = constraints.maxWidth.toFloat()
 
         // 表示スケール (scaleWindowMs) に対する全時間軸 (spanMs) の倍率から総横幅を算出
+        // Compose の安全描画上限 (20,000.dp) を適用し、各スケールでの1画面表示時間幅のクランプ歪みを防止
         val scaleRatio = spanMs.toFloat() / scaleWindowMs.toFloat()
-        val maxAllowedWidth = 3600.dp
+        val maxAllowedWidth = 20000.dp
         val rawTotalWidth = parentMaxWidth * scaleRatio
         val totalWidth = if (rawTotalWidth > maxAllowedWidth) maxAllowedWidth else rawTotalWidth
 
