@@ -43,17 +43,38 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
- * TimeScale に連動した主目盛り（大目盛り）間隔 (1日表示と同じ全体窓時間の 1/4 等比分割) を取得
+ * TimeScale に連動した主目盛り（大きな目盛り）間隔 (ミリ秒) を取得する拡張関数
+ * 人間の感覚に直結したキリの良い正分・正秒単位で定義
  */
 fun TimeScale.getTickIntervalMs(): Long {
-    return ((totalSeconds * 1000f) / 4f).toLong().coerceAtLeast(1000L)
+    return when (this) {
+        TimeScale.THREE_DAYS -> 12 * 3600 * 1000L      // 12時間刻み
+        TimeScale.ONE_DAY -> 6 * 3600 * 1000L         // 6時間刻み (00:00, 06:00, 12:00, 18:00)
+        TimeScale.SIX_HOURS -> 1 * 3600 * 1000L       // 1時間刻み (12:00, 13:00, 14:00...)
+        TimeScale.THREE_HOURS -> 30 * 60 * 1000L      // 30分刻み (12:00, 12:30, 13:00, 13:30...)
+        TimeScale.ONE_HALF_HOURS -> 15 * 60 * 1000L   // 15分刻み (12:00, 12:15, 12:30...)
+        TimeScale.THIRTY_MINUTES -> 5 * 60 * 1000L    // 5分刻み (12:00, 12:05, 12:10...)
+        TimeScale.TEN_MINUTES -> 2 * 60 * 1000L       // 2分刻み (12:00, 12:02, 12:04...)
+        TimeScale.FIVE_MINUTES -> 1 * 60 * 1000L      // 1分刻み (12:00, 12:01, 12:02...)
+        TimeScale.ONE_MINUTE -> 10 * 1000L            // 10秒刻み (12:00:00, 12:00:10...)
+    }
 }
 
 /**
- * TimeScale に連動した副目盛り（小目盛り線）間隔 (1日表示と同じ全体窓時間の 1/16 等比分割) を取得
+ * TimeScale に連動した副目盛り（小さい目盛り線）間隔 (ミリ秒) を取得する拡張関数
  */
 fun TimeScale.getSubTickIntervalMs(): Long {
-    return ((totalSeconds * 1000f) / 16f).toLong().coerceAtLeast(500L)
+    return when (this) {
+        TimeScale.THREE_DAYS -> 2 * 3600 * 1000L      // 2時間刻み
+        TimeScale.ONE_DAY -> 1 * 3600 * 1000L         // 1時間刻み
+        TimeScale.SIX_HOURS -> 10 * 60 * 1000L        // 10分刻み (1時間を6等分)
+        TimeScale.THREE_HOURS -> 10 * 60 * 1000L      // 10分刻み (30分間を3等分)
+        TimeScale.ONE_HALF_HOURS -> 5 * 60 * 1000L    // 5分刻み (15分間を3等分)
+        TimeScale.THIRTY_MINUTES -> 1 * 60 * 1000L    // 1分刻み (5分間を5等分)
+        TimeScale.TEN_MINUTES -> 30 * 1000L           // 30秒刻み (2分間を4等分)
+        TimeScale.FIVE_MINUTES -> 10 * 1000L          // 10秒刻み (1分間を6等分)
+        TimeScale.ONE_MINUTE -> 2 * 1000L             // 2秒刻み (10秒間を5等分)
+    }
 }
 
 /**
@@ -69,7 +90,7 @@ private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
 
 /**
  * =========================================================================================
- * 【統合グラフ (Unified Graph Area) - 1日表示基準 1/4 等比ルール完全適用版】
+ * 【統合グラフ (Unified Graph Area) - 人間の直感に即した30分/15分正時目盛り完全整列版】
  * =========================================================================================
  */
 @Composable
@@ -611,7 +632,7 @@ fun UnifiedGraphArea(
                         }
                     }
 
-                    // 2. 選択された TimeScale に完全自動連動し、1日表示と同じ全体窓時間の1/4等比分割スタイルを適用
+                    // 2. 選択された TimeScale に完全自動連動し、1日表示と同じ正時アライン（30分/15分/10分等）を適用
                     UnifiedTimeTicks(
                         uiState = uiState,
                         minReal = minReal,
@@ -626,7 +647,7 @@ fun UnifiedGraphArea(
 }
 
 /**
- * 画面横スライド・TimeScale に直結・完全連動し、1日表示と同じ1/4等比分割（大目盛り4等分 / 小目盛り16等分）の完璧な動的目盛りラベル
+ * 画面横スライド・TimeScale に直結・完全連動し、直感的な正時時刻で整列された動的目盛りラベル
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -662,7 +683,7 @@ fun UnifiedTimeTicks(
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
 
-            // 1. 副目盛り（小目盛り線）の描画（全体の1/16等比分割）
+            // 1. 副目盛り（小目盛り線）の描画（大目盛り間を綺麗に3〜6等分）
             val firstSubTick = alignToRoundTime(visibleStartMs, subIntervalMs)
             val lastSubTick = alignToRoundTime(visibleEndMs, subIntervalMs) + subIntervalMs
             var subTimeMs = firstSubTick
@@ -682,7 +703,7 @@ fun UnifiedTimeTicks(
                 subTimeMs += subIntervalMs
             }
 
-            // 2. 主目盛り（大きな目盛り線）＆数値ラベルの描画（全体の1/4等比分割）
+            // 2. 主目盛り（大きな目盛り線）＆正時時刻ラベルの描画
             val firstTick = alignToRoundTime(visibleStartMs, intervalMs)
             val lastTick = alignToRoundTime(visibleEndMs, intervalMs) + intervalMs
 
