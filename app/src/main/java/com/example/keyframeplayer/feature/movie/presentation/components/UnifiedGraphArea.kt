@@ -43,7 +43,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
- * TimeScale に連動した主目盛り間隔 (ミリ秒) を取得する拡張関数
+ * TimeScale に連動した主目盛り（大きな目盛り）間隔 (ミリ秒) を取得する拡張関数
  */
 fun TimeScale.getTickIntervalMs(): Long {
     return when (this) {
@@ -60,19 +60,19 @@ fun TimeScale.getTickIntervalMs(): Long {
 }
 
 /**
- * TimeScale に連動した副目盛り（サブ目盛り線）間隔 (ミリ秒) を取得する拡張関数
+ * TimeScale に連動した副目盛り（小さい目盛り線）間隔 (ミリ秒) を取得する拡張関数
  */
 fun TimeScale.getSubTickIntervalMs(): Long? {
     return when (this) {
-        TimeScale.THREE_DAYS -> 2 * 3600 * 1000L      // 2時間刻み
-        TimeScale.ONE_DAY -> 1 * 3600 * 1000L         // 1時間刻み
-        TimeScale.SIX_HOURS -> 15 * 60 * 1000L        // 15分刻み
-        TimeScale.THREE_HOURS -> 10 * 60 * 1000L      // 10分刻み
-        TimeScale.ONE_HALF_HOURS -> 5 * 60 * 1000L    // 5分刻み
-        TimeScale.THIRTY_MINUTES -> 1 * 60 * 1000L    // 1分刻み
-        TimeScale.TEN_MINUTES -> 30 * 1000L          // 30秒刻み
-        TimeScale.FIVE_MINUTES -> 15 * 1000L          // 15秒刻み
-        TimeScale.ONE_MINUTE -> 2 * 1000L             // 2秒刻み
+        TimeScale.THREE_DAYS -> 2 * 3600 * 1000L      // 2時間刻み (大目盛り内6等分)
+        TimeScale.ONE_DAY -> 1 * 3600 * 1000L         // 1時間刻み (大目盛り内6等分)
+        TimeScale.SIX_HOURS -> 10 * 60 * 1000L        // 10分刻み (大目盛り内6等分)
+        TimeScale.THREE_HOURS -> 5 * 60 * 1000L       // 5分刻み (大目盛り内6等分)
+        TimeScale.ONE_HALF_HOURS -> 2 * 60 * 1000L + 30 * 1000L // 2.5分刻み (大目盛り内6等分)
+        TimeScale.THIRTY_MINUTES -> 1 * 60 * 1000L    // 1分刻み (大目盛り内5等分)
+        TimeScale.TEN_MINUTES -> 20 * 1000L          // 20秒刻み (大目盛り内6等分)
+        TimeScale.FIVE_MINUTES -> 10 * 1000L          // 10秒刻み (大目盛り内6等分)
+        TimeScale.ONE_MINUTE -> 2 * 1000L             // 2秒刻み (大目盛り内5等分)
     }
 }
 
@@ -89,7 +89,7 @@ private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
 
 /**
  * =========================================================================================
- * 【統合グラフ (Unified Graph Area) - 90分割・目盛り正時アライン（グリッド完全整合）版】
+ * 【統合グラフ (Unified Graph Area) - 全スケール全同スタイル（大目盛り/小目盛り連動）版】
  * =========================================================================================
  */
 @Composable
@@ -631,7 +631,7 @@ fun UnifiedGraphArea(
                         }
                     }
 
-                    // 2. 選択された TimeScale に完全自動連動し、キリの良い正時に揃えた目盛り
+                    // 2. 選択された TimeScale に完全自動連動し、1日表示と同様の大きな目盛り/小さな目盛りスタイルを適用
                     UnifiedTimeTicks(
                         uiState = uiState,
                         minReal = minReal,
@@ -646,7 +646,7 @@ fun UnifiedGraphArea(
 }
 
 /**
- * 画面横スライド・TimeScale に直結・完全連動し、キリの良い正時に整列した動的目盛りラベル
+ * 画面横スライド・TimeScale に直結・完全連動し、1日表示と同様の「大きな目盛り」「小さな目盛り」で揃えた動的目盛りラベル
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -682,7 +682,7 @@ fun UnifiedTimeTicks(
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
 
-            // 1. 副目盛り（サブ目盛り線）の描画（キリの良い正時に整列）
+            // 1. 副目盛り（小さい目盛り線）の描画
             if (subIntervalMs != null) {
                 val firstSubTick = alignToRoundTime(visibleStartMs, subIntervalMs)
                 val lastSubTick = alignToRoundTime(visibleEndMs, subIntervalMs) + subIntervalMs
@@ -694,9 +694,9 @@ fun UnifiedTimeTicks(
                         val x = (progress * canvasWidth).toFloat()
 
                         drawLine(
-                            color = subTickLineColor,
+                            color = subTickLineColor.copy(alpha = 0.6f),
                             start = Offset(x, 0f),
-                            end = Offset(x, 3.dp.toPx()),
+                            end = Offset(x, 3.5.dp.toPx()),
                             strokeWidth = 1.0.dp.toPx()
                         )
                     }
@@ -704,7 +704,7 @@ fun UnifiedTimeTicks(
                 }
             }
 
-            // 2. 主目盛り＆数値ラベルの描画（キリの良い正時に整列）
+            // 2. 主目盛り（大きな目盛り線）＆数値ラベルの描画（1日表示と同等の統一スタイル）
             val firstTick = alignToRoundTime(visibleStartMs, intervalMs)
             val lastTick = alignToRoundTime(visibleEndMs, intervalMs) + intervalMs
 
@@ -726,11 +726,11 @@ fun UnifiedTimeTicks(
                     if (x - lastDrawnX >= minTextPaddingPx || lastDrawnX < 0f) {
                         lastDrawnX = x
 
-                        // 主目盛り線
+                        // 大きな主目盛り線
                         drawLine(
                             color = tickLineColor,
                             start = Offset(x, 0f),
-                            end = Offset(x, 6.dp.toPx()),
+                            end = Offset(x, 7.0.dp.toPx()),
                             strokeWidth = 1.5.dp.toPx()
                         )
 
