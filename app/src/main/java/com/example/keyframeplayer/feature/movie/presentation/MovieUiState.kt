@@ -4,31 +4,85 @@ import androidx.compose.runtime.Immutable
 import com.example.keyframeplayer.core.data.database.entity.VideoEntity
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
-import com.example.keyframeplayer.feature.movie.presentation.components.getTickIntervalMs
 import java.util.TimeZone
 
+/**
+ * 表示スケールの定義
+ * @param label 画面上の表記
+ * @param windowSeconds グラフ横幅全体 (1画面表示窓) の時間帯 (秒)
+ * @param majorTickSeconds 大目盛り（数字ラベル付き主目盛り）の間隔 (秒)
+ * @param minorTickSeconds 小目盛り（副目盛り線）の間隔 (秒)
+ */
 enum class TimeScale(
     val label: String,
-    val totalSeconds: Float,
-    val intervalMinutes: Float
+    val windowSeconds: Long,
+    val majorTickSeconds: Long,
+    val minorTickSeconds: Long
 ) {
-    THREE_DAYS("3日", 259200f, 48f),
-    ONE_DAY("1日", 86400f, 16f),
-    SIX_HOURS("6時間", 21600f, 4f),
-    THREE_HOURS("3時間", 10800f, 2f),
-    ONE_HALF_HOURS("1.5時間", 5400f, 1f),
-    THIRTY_MINUTES("30分", 1800f, 0.333333f),
-    TEN_MINUTES("10分", 600f, 0.111111f),
-    FIVE_MINUTES("5分", 300f, 0.055555f),
-    ONE_MINUTE("1分", 60f, 0.011111f);
+    THREE_DAYS(
+        label = "3日",
+        windowSeconds = 3 * 24 * 3600L, // 72時間
+        majorTickSeconds = 12 * 3600L,  // 12時間
+        minorTickSeconds = 2 * 3600L    // 2時間
+    ),
+    ONE_DAY(
+        label = "1日",
+        windowSeconds = 24 * 3600L,     // 24時間
+        majorTickSeconds = 6 * 3600L,   // 6時間 (00:00, 06:00, 12:00, 18:00)
+        minorTickSeconds = 1 * 3600L    // 1時間
+    ),
+    SIX_HOURS(
+        label = "6時間",
+        windowSeconds = 6 * 3600L,      // 6時間
+        majorTickSeconds = 1 * 3600L,   // 1時間 (12:00, 13:00, 14:00...)
+        minorTickSeconds = 10 * 60L     // 10分
+    ),
+    THREE_HOURS(
+        label = "3時間",
+        windowSeconds = 3 * 3600L,      // 3時間
+        majorTickSeconds = 1 * 3600L,   // 1時間 (12:00, 13:00, 14:00, 15:00)
+        minorTickSeconds = 10 * 60L     // 10分 (1時間を6等分)
+    ),
+    ONE_HALF_HOURS(
+        label = "1.5時間",
+        windowSeconds = 5400L,          // 1.5時間 (90分)
+        majorTickSeconds = 30 * 60L,    // 30分 (12:00, 12:30, 13:00...)
+        minorTickSeconds = 5 * 60L      // 5分
+    ),
+    THIRTY_MINUTES(
+        label = "30分",
+        windowSeconds = 1800L,          // 30分
+        majorTickSeconds = 10 * 60L,    // 10分 (12:00, 12:10, 12:20...)
+        minorTickSeconds = 1 * 60L      // 1分
+    ),
+    TEN_MINUTES(
+        label = "10分",
+        windowSeconds = 600L,           // 10分
+        majorTickSeconds = 2 * 60L,     // 2分 (12:00, 12:02, 12:04...)
+        minorTickSeconds = 30L          // 30秒
+    ),
+    FIVE_MINUTES(
+        label = "5分",
+        windowSeconds = 300L,           // 5分
+        majorTickSeconds = 60L,         // 1分 (12:00, 12:01, 12:02...)
+        minorTickSeconds = 10L          // 10秒
+    ),
+    ONE_MINUTE(
+        label = "1分",
+        windowSeconds = 60L,            // 1分
+        majorTickSeconds = 10L,         // 10秒 (12:00:00, 12:00:10...)
+        minorTickSeconds = 2L           // 2秒
+    );
 
-    val intervalSeconds: Float
-        get() = intervalMinutes * 60f
+    val windowMs: Long get() = windowSeconds * 1000L
+    val majorTickMs: Long get() = majorTickSeconds * 1000L
+    val minorTickMs: Long get() = minorTickSeconds * 1000L
+
+    val totalSeconds: Float get() = windowSeconds.toFloat()
+    val intervalMinutes: Float get() = majorTickSeconds / 60f
 
     val barCountPerWindow: Int = 90
-
-    val barCount: Int
-        get() = barCountPerWindow
+    val barCount: Int get() = barCountPerWindow
 
     fun zoomIn(): TimeScale {
         val entries = TimeScale.entries
@@ -96,17 +150,17 @@ data class MovieUiState(
 
     val visibleRangeWidth: Float
         get() {
-            val scaleWindowMs = selectedTimeScale.totalSeconds * 1000f
-            val spanMs = maxOf(totalRealDurationMs.toFloat(), scaleWindowMs)
-            return (scaleWindowMs / spanMs).coerceIn(0.05f, 1f)
+            val scaleWindowMs = selectedTimeScale.windowMs
+            val spanMs = maxOf(totalRealDurationMs, scaleWindowMs)
+            return (scaleWindowMs.toFloat() / spanMs.toFloat()).coerceIn(0.05f, 1f)
         }
 
     /**
      * 選択されている TimeScale の正時目盛り刻みに完全に合致した【アライン済みの開始絶対時刻(ms)】と【総時間幅(ms)】を取得する
      */
     fun getAlignedBounds(): Pair<Long, Long> {
-        val intervalMs = selectedTimeScale.getTickIntervalMs()
-        val scaleWindowMs = (selectedTimeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+        val intervalMs = selectedTimeScale.majorTickMs
+        val scaleWindowMs = selectedTimeScale.windowMs
 
         val rawMinReal = minRealTimeMs
         val rawSpanMs = maxOf(totalRealDurationMs, scaleWindowMs)

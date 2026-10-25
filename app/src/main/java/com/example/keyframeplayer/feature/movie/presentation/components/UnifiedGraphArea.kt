@@ -43,39 +43,14 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
- * TimeScale に連動した主目盛り（大きな目盛り）間隔 (ミリ秒) を取得する拡張関数
- * 人間の感覚に直結したキリの良い正分・正秒単位で定義
+ * TimeScale に連動した主目盛り（大きな目盛り）間隔 (ミリ秒) を取得
  */
-fun TimeScale.getTickIntervalMs(): Long {
-    return when (this) {
-        TimeScale.THREE_DAYS -> 12 * 3600 * 1000L      // 12時間刻み
-        TimeScale.ONE_DAY -> 6 * 3600 * 1000L         // 6時間刻み (00:00, 06:00, 12:00, 18:00)
-        TimeScale.SIX_HOURS -> 1 * 3600 * 1000L       // 1時間刻み (12:00, 13:00, 14:00...)
-        TimeScale.THREE_HOURS -> 1 * 3600 * 1000L     // 1時間刻み (12:00, 13:00, 14:00...) [★3時間に3分割]
-        TimeScale.ONE_HALF_HOURS -> 30 * 60 * 1000L   // 30分刻み (12:00, 12:30, 13:00...)
-        TimeScale.THIRTY_MINUTES -> 10 * 60 * 1000L   // 10分刻み (12:00, 12:10, 12:20...)
-        TimeScale.TEN_MINUTES -> 2 * 60 * 1000L       // 2分刻み (12:00, 12:02, 12:04...)
-        TimeScale.FIVE_MINUTES -> 1 * 60 * 1000L      // 1分刻み (12:00, 12:01, 12:02...)
-        TimeScale.ONE_MINUTE -> 10 * 1000L            // 10秒刻み (12:00:00, 12:00:10...)
-    }
-}
+fun TimeScale.getTickIntervalMs(): Long = majorTickMs
 
 /**
- * TimeScale に連動した副目盛り（小さい目盛り線）間隔 (ミリ秒) を取得する拡張関数
+ * TimeScale に連動した副目盛り（小さい目盛り線）間隔 (ミリ秒) を取得
  */
-fun TimeScale.getSubTickIntervalMs(): Long {
-    return when (this) {
-        TimeScale.THREE_DAYS -> 2 * 3600 * 1000L      // 2時間刻み
-        TimeScale.ONE_DAY -> 1 * 3600 * 1000L         // 1時間刻み
-        TimeScale.SIX_HOURS -> 10 * 60 * 1000L        // 10分刻み (1時間を6等分)
-        TimeScale.THREE_HOURS -> 10 * 60 * 1000L      // 10分刻み [★1時間を6等分]
-        TimeScale.ONE_HALF_HOURS -> 5 * 60 * 1000L    // 5分刻み (30分間を6等分)
-        TimeScale.THIRTY_MINUTES -> 1 * 60 * 1000L    // 1分刻み (10分間を10等分)
-        TimeScale.TEN_MINUTES -> 30 * 1000L           // 30秒刻み (2分間を4等分)
-        TimeScale.FIVE_MINUTES -> 10 * 1000L          // 10秒刻み (1分間を6等分)
-        TimeScale.ONE_MINUTE -> 2 * 1000L             // 2秒刻み (10秒間を5等分)
-    }
-}
+fun TimeScale.getSubTickIntervalMs(): Long = minorTickMs
 
 /**
  * Epochミリ秒をタイムゾーン考慮の「キリの良い正時（00分, 15分, 30分や00秒等）」に切り揃えるヘルパー関数
@@ -90,7 +65,7 @@ private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
 
 /**
  * =========================================================================================
- * 【統合グラフ (Unified Graph Area) - 人間の直感に即した3時間=1時間刻み/10分小目盛り完全反映版】
+ * 【統合グラフ (Unified Graph Area) - 直感的にカスタマイズ可能な全スケール黄金比目盛り版】
  * =========================================================================================
  */
 @Composable
@@ -105,7 +80,7 @@ fun UnifiedGraphArea(
     val coroutineScope = rememberCoroutineScope()
 
     val timeScale = uiState.selectedTimeScale
-    val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+    val scaleWindowMs = timeScale.windowMs
     val minReal = uiState.minRealTimeMs
     val spanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
 
