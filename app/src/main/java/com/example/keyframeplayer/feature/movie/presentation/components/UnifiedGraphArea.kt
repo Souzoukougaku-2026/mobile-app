@@ -65,7 +65,7 @@ private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
 
 /**
  * =========================================================================================
- * 【統合グラフ (Unified Graph Area) - 直感的にカスタマイズ可能な全スケール黄金比目盛り版】
+ * 【統合グラフ (Unified Graph Area) - ビューポート絶対座標描画モデル】
  * =========================================================================================
  */
 @Composable
@@ -596,7 +596,7 @@ fun UnifiedGraphArea(
                         }
                     }
 
-                    // 2. 選択された TimeScale で指定された刻み通り 100% 確実に大目盛り・小目盛りを描画
+                    // 2. 選択された TimeScale で指定された majorTickMs / minorTickMs を確実に絶対位置に全描画
                     UnifiedTimeTicks(
                         uiState = uiState,
                         minReal = minReal,
@@ -611,7 +611,7 @@ fun UnifiedGraphArea(
 }
 
 /**
- * 画面横スライド・TimeScale に直結・完全連動し、指定された majorTickMs / minorTickMs を確実に全描画する目盛り
+ * 画面横スライド・TimeScale に直結・完全連動し、指定された majorTickMs / minorTickMs を確実に絶対位置で描画する目盛り
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -641,23 +641,20 @@ fun UnifiedTimeTicks(
 
             if (canvasWidth <= 0f || spanMs <= 0L) return@Canvas
 
-            val intervalMs = timeScale.getTickIntervalMs()
-            val subIntervalMs = timeScale.getSubTickIntervalMs()
+            val majorIntervalMs = timeScale.majorTickMs
+            val minorIntervalMs = timeScale.minorTickMs
 
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
 
-            // 1. 副目盛り（小目盛り線）の描画（指定された minorTickMs で確実に描画）
-            if (subIntervalMs > 0L) {
-                val firstSubTick = alignToRoundTime(visibleStartMs, subIntervalMs)
-                val lastSubTick = alignToRoundTime(visibleEndMs, subIntervalMs) + subIntervalMs
-                var subTimeMs = firstSubTick
-
-                while (subTimeMs <= lastSubTick && subTimeMs <= maxReal + subIntervalMs) {
-                    if (subTimeMs >= minReal) {
-                        val progress = ((subTimeMs - minReal).toDouble() / spanMs.toDouble()).coerceIn(0.0, 1.0)
-                        val x = (progress * canvasWidth).toFloat()
-
+            // 1. 小目盛り（minorIntervalMs ごとに絶対位置で描画）
+            if (minorIntervalMs > 0L) {
+                val firstMinor = alignToRoundTime(visibleStartMs, minorIntervalMs)
+                val lastMinor = alignToRoundTime(visibleEndMs, minorIntervalMs) + minorIntervalMs
+                var t = firstMinor
+                while (t <= lastMinor && t <= maxReal + minorIntervalMs) {
+                    if (t >= minReal) {
+                        val x = ((t - minReal).toDouble() / spanMs.toDouble() * canvasWidth).toFloat()
                         drawLine(
                             color = subTickLineColor.copy(alpha = 0.5f),
                             start = Offset(x, 0f),
@@ -665,13 +662,13 @@ fun UnifiedTimeTicks(
                             strokeWidth = 1.0.dp.toPx()
                         )
                     }
-                    subTimeMs += subIntervalMs
+                    t += minorIntervalMs
                 }
             }
 
-            // 2. 主目盛り（大目盛り線＆数値ラベル）の描画（指定された majorTickMs で100%確実に全描画）
-            val firstTick = alignToRoundTime(visibleStartMs, intervalMs)
-            val lastTick = alignToRoundTime(visibleEndMs, intervalMs) + intervalMs
+            // 2. 大目盛り（majorIntervalMs ごとに絶対位置で100%確実に描画）
+            val firstMajor = alignToRoundTime(visibleStartMs, majorIntervalMs)
+            val lastMajor = alignToRoundTime(visibleEndMs, majorIntervalMs) + majorIntervalMs
 
             val timeSdf = when (timeScale) {
                 TimeScale.THREE_DAYS, TimeScale.ONE_DAY -> SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
@@ -679,14 +676,12 @@ fun UnifiedTimeTicks(
                 TimeScale.FIVE_MINUTES, TimeScale.ONE_MINUTE -> SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             }
 
-            var tickTimeMs = firstTick
+            var t = firstMajor
+            while (t <= lastMajor && t <= maxReal + majorIntervalMs) {
+                if (t >= minReal) {
+                    val x = ((t - minReal).toDouble() / spanMs.toDouble() * canvasWidth).toFloat()
 
-            while (tickTimeMs <= lastTick && tickTimeMs <= maxReal + intervalMs) {
-                if (tickTimeMs >= minReal) {
-                    val progress = ((tickTimeMs - minReal).toDouble() / spanMs.toDouble()).coerceIn(0.0, 1.0)
-                    val x = (progress * canvasWidth).toFloat()
-
-                    // 大きな主目盛り線
+                    // 大目盛り線
                     drawLine(
                         color = tickLineColor,
                         start = Offset(x, 0f),
@@ -694,7 +689,8 @@ fun UnifiedTimeTicks(
                         strokeWidth = 1.5.dp.toPx()
                     )
 
-                    val label = timeSdf.format(Date(tickTimeMs))
+                    // 時刻テキストラベル
+                    val label = timeSdf.format(Date(t))
 
                     drawContext.canvas.nativeCanvas.drawText(
                         label,
@@ -709,7 +705,7 @@ fun UnifiedTimeTicks(
                         }
                     )
                 }
-                tickTimeMs += intervalMs
+                t += majorIntervalMs
             }
         }
     }
@@ -813,7 +809,7 @@ fun GraphControlArea(
                             text = { Text(color.displayName) },
                             onClick = {
                                 onColorFilterSelected(color)
-                                classMenuExpanded = false
+                                colorMenuExpanded = false
                             }
                         )
                     }

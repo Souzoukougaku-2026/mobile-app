@@ -10,7 +10,6 @@ import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.domain.MovieRepository
-import com.example.keyframeplayer.feature.movie.presentation.components.getTickIntervalMs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -241,19 +240,19 @@ class MovieViewModel @Inject constructor(
         val likedFilterOnly = state.isLikedFilterOnly
 
         val minRealTimeMs = state.minRealTimeMs
-        val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
-        val spanMs = maxOf(state.totalRealDurationMs, scaleWindowMs).toDouble()
+        val scaleWindowMs = timeScale.windowMs
+        val totalRealDurationMs = maxOf(state.totalRealDurationMs, scaleWindowMs)
 
-        // 1. 条件（クラス・色・いいね）で CropImage を絞り込み
+        // 条件（クラス・色・いいね）で CropImage を絞り込み
         val filtered = keyframes.filter { item ->
             (classFilter == null || item.className == classFilter) &&
             (colorFilter == null || item.color == colorFilter) &&
             (!likedFilterOnly || item.isLiked)
         }
 
-        // 2. 1画面幅(scaleWindowMs)をぴったり90分割するバケット幅(ms)の計算
+        // 1画面幅(scaleWindowMs)をちょうど90分割するバケット幅(ms)
         val bucketMs = (scaleWindowMs.toDouble() / 90.0).coerceAtLeast(1.0)
-        val totalBarCount = (spanMs / bucketMs).toInt().coerceAtLeast(90)
+        val totalBarCount = (totalRealDurationMs.toDouble() / bucketMs).toInt().coerceAtLeast(90)
         val counts = IntArray(totalBarCount)
 
         for (item in filtered) {
@@ -355,7 +354,7 @@ class MovieViewModel @Inject constructor(
     fun onProgressTapped(progress: Float) {
         val state = _uiState.value
         val minRealTimeMs = state.minRealTimeMs
-        val scaleWindowMs = (state.selectedTimeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+        val scaleWindowMs = state.selectedTimeScale.windowMs
         val spanMs = maxOf(state.totalRealDurationMs, scaleWindowMs)
         val targetRealTimeMs = minRealTimeMs + (progress.coerceIn(0f, 1f) * spanMs).toLong()
 
