@@ -653,7 +653,7 @@ fun UnifiedTimeTicks(
 
             val timeSdf = when (timeScale) {
                 TimeScale.THREE_DAYS, TimeScale.ONE_DAY -> SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-                TimeScale.SIX_HOURS, TimeScale.THREE_HOURS, TimeScale.ONE_HALF_HOURS, TimeScale.THIRTY_MINUTES, TimeScale.TEN_MINUTES -> SimpleDateFormat("HH:mm", Locale.getDefault())
+                TimeScale.TWELVE_HOURS, TimeScale.SIX_HOURS, TimeScale.THREE_HOURS, TimeScale.ONE_HALF_HOURS, TimeScale.THIRTY_MINUTES, TimeScale.TEN_MINUTES -> SimpleDateFormat("HH:mm", Locale.getDefault())
                 TimeScale.FIVE_MINUTES, TimeScale.ONE_MINUTE -> SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             }
 

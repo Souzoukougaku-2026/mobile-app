@@ -31,7 +31,7 @@ enum class TimeScale(
     THREE_DAYS(
         label = "3日",
         windowSeconds = 3 * 24 * 3600L, // 72時間 (259200秒)
-        majorTickSeconds = 18 * 3600L,  // 18時間
+        majorTickSeconds = 12 * 3600L,  // 18時間
         minorTickSeconds = 3 * 3600L    // 3時間
     ),
     ONE_DAY(
@@ -40,11 +40,17 @@ enum class TimeScale(
         majorTickSeconds = 6 * 3600L,   // 6時間 (00:00, 06:00, 12:00, 18:00)
         minorTickSeconds = 1 * 3600L    // 1時間
     ),
+    TWELVE_HOURS(
+        label = "12時間",
+        windowSeconds = 12 * 3600L,     // 12時間 (43200秒)
+        majorTickSeconds = 3 * 3600L,   // 3時間 (00:00, 03:00, 06:00, 09:00, 12:00...)
+        minorTickSeconds = 30 * 60L     // 30分
+    ),
     SIX_HOURS(
         label = "6時間",
         windowSeconds = 6 * 3600L,      // 6時間 (21600秒)
-        majorTickSeconds = 3600L,       // 1時間 (12:00, 13:00, 14:00)
-        minorTickSeconds = 600L         // 10分
+        majorTickSeconds = 1 * 3600L,   // 1時間 (12:00, 13:00, 14:00)
+        minorTickSeconds = 10 * 60L     // 10分
     ),
     THREE_HOURS(
         label = "3時間",
