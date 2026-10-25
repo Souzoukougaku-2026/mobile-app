@@ -623,20 +623,25 @@ fun UnifiedTimeTicks(
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
 
-            // 1. 小目盛り（100%忠実描画）
+            // 1. 小目盛り（100%忠実描画、大目盛りと被る位置はスッキリ除外）
             if (minorIntervalMs > 0L) {
                 val firstMinor = floorToRoundInterval(visibleStartMs, minorIntervalMs)
                 val lastMinor = floorToRoundInterval(visibleEndMs, minorIntervalMs) + minorIntervalMs
                 var t = firstMinor
                 while (t <= lastMinor && t <= maxReal + minorIntervalMs) {
                     if (t >= minReal) {
-                        val x = ((t - minReal).toDouble() / spanMs.toDouble() * canvasWidth).toFloat()
-                        drawLine(
-                            color = subTickLineColor.copy(alpha = 0.5f),
-                            start = Offset(x, 0f),
-                            end = Offset(x, 3.5.dp.toPx()),
-                            strokeWidth = 1.0.dp.toPx()
-                        )
+                        // 大目盛り(majorIntervalMs)と重ならない位置のみ小目を描画
+                        val tzOffset = TimeZone.getDefault().getOffset(t)
+                        val localMs = t + tzOffset
+                        if (localMs % majorIntervalMs != 0L) {
+                            val x = ((t - minReal).toDouble() / spanMs.toDouble() * canvasWidth).toFloat()
+                            drawLine(
+                                color = subTickLineColor.copy(alpha = 0.45f),
+                                start = Offset(x, 0f),
+                                end = Offset(x, 3.5.dp.toPx()),
+                                strokeWidth = 1.0.dp.toPx()
+                            )
+                        }
                     }
                     t += minorIntervalMs
                 }
