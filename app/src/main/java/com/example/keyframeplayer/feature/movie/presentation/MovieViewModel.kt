@@ -124,7 +124,7 @@ class MovieViewModel @Inject constructor(
                 targetIndex = videos.indexOfMinByOrNull { kotlin.math.abs(it.realStartTime - targetRealTime) } ?: 0
             }
             val targetVideo = videos[targetIndex]
-            posInVideoMs = (targetRealTime - targetVideo.realStartTime).coerceIn(0L, targetVideo.durationMs)
+            posInVideoMs = (targetRealTime - targetVideo.startTimeTextMs()).coerceIn(0L, targetVideo.durationMs)
         }
 
         if (targetIndex == -1) {
@@ -152,6 +152,8 @@ class MovieViewModel @Inject constructor(
             )
         }
     }
+
+    private fun VideoEntity.startTimeTextMs(): Long = realStartTime
 
     private fun updateRealTimeBounds(videos: List<VideoEntity>, keyframes: List<CropImage>) {
         val validVideoStarts = videos.map { it.realStartTime }.filter { it > 0L }
@@ -243,14 +245,13 @@ class MovieViewModel @Inject constructor(
         val scaleWindowMs = timeScale.windowMs
         val totalRealDurationMs = maxOf(state.totalRealDurationMs, scaleWindowMs)
 
-        // 条件（クラス・色・いいね）で CropImage を絞り込み
         val filtered = keyframes.filter { item ->
             (classFilter == null || item.className == classFilter) &&
             (colorFilter == null || item.color == colorFilter) &&
             (!likedFilterOnly || item.isLiked)
         }
 
-        // 1画面幅(scaleWindowMs)をちょうど90分割するバケット幅(ms)
+        // 超・極小シンプルなバケット計算: 1画面窓(scaleWindowMs)を90分割
         val bucketMs = (scaleWindowMs.toDouble() / 90.0).coerceAtLeast(1.0)
         val totalBarCount = (totalRealDurationMs.toDouble() / bucketMs).toInt().coerceAtLeast(90)
         val counts = IntArray(totalBarCount)
@@ -290,11 +291,6 @@ class MovieViewModel @Inject constructor(
         }
     }
 
-    /**
-     * 現在の再生位置から指定秒数分だけスキップ（前送り/巻き戻し）します。
-     * 動画ファイルの境界を跨いで時間軸上で移動します。
-     * @param deltaSeconds 移動する秒数（例: +5.0f, -5.0f）
-     */
     fun onSkipBy(deltaSeconds: Float) {
         val currentSec = _uiState.value.currentTime
         val totalSec = _uiState.value.totalDurationSeconds
@@ -302,10 +298,6 @@ class MovieViewModel @Inject constructor(
         onTimeChanged(targetSec)
     }
 
-    /**
-     * 指定された時間に現在の再生位置を変更します（シークバー・グラフ操作時）。
-     * @param newTime 変更後の時間（秒）
-     */
     fun onTimeChanged(newTime: Float) {
         lastSeekTimestamp = System.currentTimeMillis()
         val totalSec = _uiState.value.totalDurationSeconds
@@ -324,9 +316,6 @@ class MovieViewModel @Inject constructor(
         }
     }
 
-    /**
-     * ExoPlayer からの現在の再生位置更新（1/200ms間隔等で呼び出し）
-     */
     fun onPlayerPositionUpdated(mediaItemIndex: Int, positionMs: Long) {
         if (System.currentTimeMillis() - lastSeekTimestamp < 800L) {
             return
@@ -392,7 +381,6 @@ class MovieViewModel @Inject constructor(
     }
 
     fun onVisibleRangeChanged(startProgress: Float) {
-        // 後方互換維持
     }
 
     private fun mapOverallTimeToVideoPosition(

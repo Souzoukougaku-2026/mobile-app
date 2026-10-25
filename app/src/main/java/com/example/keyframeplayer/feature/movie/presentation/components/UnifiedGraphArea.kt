@@ -43,19 +43,9 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
- * TimeScale に連動した主目盛り（大きな目盛り）間隔 (ミリ秒) を取得
+ * Epochミリ秒をタイムゾーン考慮の「キリの良い正時（00分, 30分や00秒等）」に切り揃える純粋関数
  */
-fun TimeScale.getTickIntervalMs(): Long = majorTickMs
-
-/**
- * TimeScale に連動した副目盛り（小さい目盛り線）間隔 (ミリ秒) を取得
- */
-fun TimeScale.getSubTickIntervalMs(): Long = minorTickMs
-
-/**
- * Epochミリ秒をタイムゾーン考慮の「キリの良い正時（00分, 15分, 30分や00秒等）」に切り揃えるヘルパー関数
- */
-private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
+private fun floorToRoundInterval(timeMs: Long, intervalMs: Long): Long {
     if (intervalMs <= 0L) return timeMs
     val tzOffset = TimeZone.getDefault().getOffset(timeMs)
     val localMs = timeMs + tzOffset
@@ -65,7 +55,7 @@ private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
 
 /**
  * =========================================================================================
- * 【統合グラフ (Unified Graph Area) - ビューポート絶対座標描画モデル】
+ * 【統合グラフ (Unified Graph Area) - 超シンプル設計・1画面固定アスペクト描画】
  * =========================================================================================
  */
 @Composable
@@ -91,13 +81,13 @@ fun UnifiedGraphArea(
     var isDraggingRedBar by remember { mutableStateOf(false) }
     var localDragX by remember { mutableFloatStateOf(-1f) }
 
-    // 再生位置が変更された場合に scrollState を中央付近へ自動スクロール
+    // 再生位置が変更された場合に scrollState を自動追従
     val currentRealTimeMs = uiState.currentRealTimeMs
     val currentProgress = if (spanMs > 0L) {
         ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
 
-    // 絞り込み適用済みのキーフレーム一覧 (時間昇順)
+    // 絞り込み適用済みのキーフレーム一覧
     val filteredKeyframes = remember(
         uiState.keyframes,
         uiState.selectedClassFilter,
@@ -113,12 +103,10 @@ fun UnifiedGraphArea(
             .sortedBy { it.realTime }
     }
 
-    // 現在時刻より前の最新オブジェクト
     val prevKeyframe = remember(filteredKeyframes, currentRealTimeMs) {
         filteredKeyframes.filter { it.realTime < currentRealTimeMs - 500L }.maxByOrNull { it.realTime }
     }
 
-    // 現在時刻より後の最古オブジェクト
     val nextKeyframe = remember(filteredKeyframes, currentRealTimeMs) {
         filteredKeyframes.filter { it.realTime > currentRealTimeMs + 500L }.minByOrNull { it.realTime }
     }
@@ -133,7 +121,7 @@ fun UnifiedGraphArea(
         }
     }
 
-    // 赤バーを端付近でドラッグ維持している場合の背景（グラフ）自動スライド処理
+    // ドラッグ時の端点自動スライド
     LaunchedEffect(isDraggingRedBar, localDragX) {
         if (isDraggingRedBar && localDragX >= 0f) {
             val edgeMarginPx = with(density) { 45.dp.toPx() }
@@ -168,10 +156,7 @@ fun UnifiedGraphArea(
         }
     }
 
-    // ピンチジェスチャーの累積倍率トラッキング
     var accumulatedZoom by remember { mutableFloatStateOf(1.0f) }
-
-    // スケールサイズドロップダウンの開閉状態
     var timeScaleMenuExpanded by remember { mutableStateOf(false) }
 
     BoxWithConstraints(
@@ -218,7 +203,7 @@ fun UnifiedGraphArea(
         val parentMaxWidth = this.maxWidth
         val viewportWidthPx = constraints.maxWidth.toFloat()
 
-        // 表示スケール (scaleWindowMs) に対する全時間軸 (spanMs) の倍率から総横幅を算出
+        // 1画面の横幅(parentMaxWidth)がピッタリ選択された窓時間(scaleWindowMs)となる比率計算
         val scaleRatio = spanMs.toFloat() / scaleWindowMs.toFloat()
         val maxAllowedWidth = 3600.dp
         val rawTotalWidth = parentMaxWidth * scaleRatio
@@ -229,7 +214,7 @@ fun UnifiedGraphArea(
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
         ) {
-            // ヘッダー: スケールサイズドロップダウン & ズーム操作ヒント
+            // ヘッダーコントロール
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -241,7 +226,6 @@ fun UnifiedGraphArea(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // スケールサイズ切り替えドロップダウン
                     Box {
                         FilterChip(
                             selected = true,
@@ -286,7 +270,6 @@ fun UnifiedGraphArea(
                         }
                     }
 
-                    // ◀ 前のオブジェクトの時点へ移動
                     IconButton(
                         onClick = {
                             prevKeyframe?.let { kf ->
@@ -307,7 +290,6 @@ fun UnifiedGraphArea(
                         )
                     }
 
-                    // ▶ 次のオブジェクトの時点へ移動
                     IconButton(
                         onClick = {
                             nextKeyframe?.let { kf ->
@@ -336,7 +318,6 @@ fun UnifiedGraphArea(
                 )
             }
 
-            // 一続きのシームレスな横スクロールコンテナ
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -346,14 +327,12 @@ fun UnifiedGraphArea(
                     modifier = Modifier.width(totalWidth)
                 ) {
                     val primaryColor = MaterialTheme.colorScheme.primary
-                    // 動画が存在しない背景部分: トーンを抑えたシックなベースカラー
                     val noVideoBgColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                    // 動画が存在する領域: 鮮やかで際立つ強調ハイライトカラー
                     val activeVideoBgColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
                     val activeBorderColor = primaryColor
                     val activeTopLineColor = primaryColor
 
-                    // 1. ヒストグラム・赤バー描画用 Canvas
+                    // 1. メイン Canvas (背景, 動画領域, ヒストグラムバー, 赤バー)
                     Canvas(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -447,14 +426,14 @@ fun UnifiedGraphArea(
                         val canvasWidth = size.width
                         val canvasHeight = size.height
 
-                        // 1. 全体背景 (動画が存在しない背景区間: トーンを落としたシックなカラー)
+                        // 全体背景 (動画が存在しない背景区間)
                         drawRoundRect(
                             color = noVideoBgColor,
                             size = Size(canvasWidth, canvasHeight),
                             cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
                         )
 
-                        // 2. 動画が存在する範囲 (ここを圧倒的にクッキリと強調表示！)
+                        // 動画が存在する範囲 (ハイライト強調)
                         for (video in uiState.videos) {
                             val vStart = video.realStartTime
                             val vEnd = video.realEndTime
@@ -465,21 +444,18 @@ fun UnifiedGraphArea(
                                 val right = endProgress * canvasWidth
                                 val width = (right - left).coerceAtLeast(3f)
 
-                                // 鮮やかなハイライト背景で動画存在領域を強調
                                 drawRect(
                                     color = activeVideoBgColor,
                                     topLeft = Offset(left, 0f),
                                     size = Size(width, canvasHeight)
                                 )
 
-                                // 動画領域の上部インジケーターライン
                                 drawRect(
                                     color = activeTopLineColor,
                                     topLeft = Offset(left, 0f),
                                     size = Size(width, 4.dp.toPx())
                                 )
 
-                                // 左右のクッキリした境界線
                                 drawLine(
                                     color = activeBorderColor,
                                     start = Offset(left, 0f),
@@ -495,7 +471,7 @@ fun UnifiedGraphArea(
                             }
                         }
 
-                        // 3. 集計データバーの描画 (画面1幅にぴったり90分割分が入る完璧なアスペクト比で描画)
+                        // 集計データバー
                         val barCounts = uiState.graphBarCounts
                         val totalBarCount = barCounts.size
                         if (totalBarCount > 0) {
@@ -535,7 +511,7 @@ fun UnifiedGraphArea(
                             }
                         }
 
-                        // 4. 赤バー（インジケーター）描画
+                        // 赤バー（インジケーター）描画
                         val cProgress = if (spanMs > 0L) {
                             ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
                         } else 0f
@@ -596,7 +572,7 @@ fun UnifiedGraphArea(
                         }
                     }
 
-                    // 2. 選択された TimeScale で指定された majorTickMs / minorTickMs を確実に絶対位置に全描画
+                    // 2. 超・高精度シンプル目盛り描画コンポーネント
                     UnifiedTimeTicks(
                         uiState = uiState,
                         minReal = minReal,
@@ -611,7 +587,7 @@ fun UnifiedGraphArea(
 }
 
 /**
- * 画面横スライド・TimeScale に直結・完全連動し、指定された majorTickMs / minorTickMs を確実に絶対位置で描画する目盛り
+ * 画面横スライドに対応した新設計・動的目盛り描画コンポーネント
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -647,10 +623,10 @@ fun UnifiedTimeTicks(
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
 
-            // 1. 小目盛り（minorIntervalMs ごとに絶対位置で描画）
+            // 1. 小目盛り（100%忠実描画）
             if (minorIntervalMs > 0L) {
-                val firstMinor = alignToRoundTime(visibleStartMs, minorIntervalMs)
-                val lastMinor = alignToRoundTime(visibleEndMs, minorIntervalMs) + minorIntervalMs
+                val firstMinor = floorToRoundInterval(visibleStartMs, minorIntervalMs)
+                val lastMinor = floorToRoundInterval(visibleEndMs, minorIntervalMs) + minorIntervalMs
                 var t = firstMinor
                 while (t <= lastMinor && t <= maxReal + minorIntervalMs) {
                     if (t >= minReal) {
@@ -666,9 +642,9 @@ fun UnifiedTimeTicks(
                 }
             }
 
-            // 2. 大目盛り（majorIntervalMs ごとに絶対位置で100%確実に描画）
-            val firstMajor = alignToRoundTime(visibleStartMs, majorIntervalMs)
-            val lastMajor = alignToRoundTime(visibleEndMs, majorIntervalMs) + majorIntervalMs
+            // 2. 大目盛り（100%忠実描画）
+            val firstMajor = floorToRoundInterval(visibleStartMs, majorIntervalMs)
+            val lastMajor = floorToRoundInterval(visibleEndMs, majorIntervalMs) + majorIntervalMs
 
             val timeSdf = when (timeScale) {
                 TimeScale.THREE_DAYS, TimeScale.ONE_DAY -> SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
@@ -681,7 +657,6 @@ fun UnifiedTimeTicks(
                 if (t >= minReal) {
                     val x = ((t - minReal).toDouble() / spanMs.toDouble() * canvasWidth).toFloat()
 
-                    // 大目盛り線
                     drawLine(
                         color = tickLineColor,
                         start = Offset(x, 0f),
@@ -689,7 +664,6 @@ fun UnifiedTimeTicks(
                         strokeWidth = 1.5.dp.toPx()
                     )
 
-                    // 時刻テキストラベル
                     val label = timeSdf.format(Date(t))
 
                     drawContext.canvas.nativeCanvas.drawText(
@@ -732,13 +706,11 @@ fun GraphControlArea(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        // フィルター（クラス & 色 & いいね）
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // クラスフィルター
             ExposedDropdownMenuBox(
                 expanded = classMenuExpanded,
                 onExpandedChange = { classMenuExpanded = !classMenuExpanded },
@@ -777,7 +749,6 @@ fun GraphControlArea(
                 }
             }
 
-            // 色フィルター
             ExposedDropdownMenuBox(
                 expanded = colorMenuExpanded,
                 onExpandedChange = { colorMenuExpanded = !colorMenuExpanded },
@@ -816,7 +787,6 @@ fun GraphControlArea(
                 }
             }
 
-            // ❤️ いいねトグルフィルターボタン
             FilterChip(
                 selected = uiState.isLikedFilterOnly,
                 onClick = onLikedFilterToggled,

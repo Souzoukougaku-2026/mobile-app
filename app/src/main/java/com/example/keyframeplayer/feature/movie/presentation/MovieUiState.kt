@@ -7,11 +7,11 @@ import com.example.keyframeplayer.core.domain.model.ImageColor
 import java.util.TimeZone
 
 /**
- * 表示スケールの定義
- * @param label 画面上の表記
- * @param windowSeconds グラフ横幅全体 (1画面表示窓) の時間帯 (秒)
- * @param majorTickSeconds 大目盛り（数字ラベル付き主目盛り）の間隔 (秒)
- * @param minorTickSeconds 小目盛り（副目盛り線）の間隔 (秒)
+ * 新設計: タイムスケール定義
+ * @param label スケール名
+ * @param windowSeconds 1画面（ビューポート）に収める基準時間（秒）
+ * @param majorTickSeconds 大目盛り（数字ラベル付き主目盛り）の間隔（秒）
+ * @param minorTickSeconds 小目盛り（副目盛り線）の間隔（秒）
  */
 enum class TimeScale(
     val label: String,
@@ -19,60 +19,15 @@ enum class TimeScale(
     val majorTickSeconds: Long,
     val minorTickSeconds: Long
 ) {
-    THREE_DAYS(
-        label = "3日",
-        windowSeconds = 3 * 24 * 3600L, // 72時間 (259200秒)
-        majorTickSeconds = 18 * 3600L,  // 18時間 (72h / 4)
-        minorTickSeconds = 3 * 3600L    // 3時間 (72h / 24)
-    ),
-    ONE_DAY(
-        label = "1日",
-        windowSeconds = 24 * 3600L,     // 24時間 (86400秒)
-        majorTickSeconds = 6 * 3600L,   // 6時間 (24h / 4) [★1日表示の基準スタイル]
-        minorTickSeconds = 1 * 3600L    // 1時間 (24h / 24)
-    ),
-    SIX_HOURS(
-        label = "6時間",
-        windowSeconds = 6 * 3600L,      // 6時間 (21600秒)
-        majorTickSeconds = 3600L,       // 1時間 (12:00, 13:00, 14:00, 15:00)
-        minorTickSeconds = 600L         // 10分
-    ),
-    THREE_HOURS(
-        label = "3時間",
-        windowSeconds = 3 * 3600L,      // 3時間 (10800秒)
-        majorTickSeconds = 3600L,       // 1時間 (12:00, 13:00, 14:00, 15:00)
-        minorTickSeconds = 600L         // 10分 (1時間を6等分)
-    ),
-    ONE_HALF_HOURS(
-        label = "1.5時間",
-        windowSeconds = 5400L,          // 1.5時間 (90分 = 5400秒)
-        majorTickSeconds = 1800L,       // 30分 (12:00, 12:30, 13:00...)
-        minorTickSeconds = 300L         // 5分
-    ),
-    THIRTY_MINUTES(
-        label = "30分",
-        windowSeconds = 1800L,          // 30分 (1800秒)
-        majorTickSeconds = 600L,        // 10分 (12:00, 12:10, 12:20...)
-        minorTickSeconds = 60L          // 1分
-    ),
-    TEN_MINUTES(
-        label = "10分",
-        windowSeconds = 600L,           // 10分 (600秒)
-        majorTickSeconds = 120L,        // 2分 (12:00, 12:02, 12:04...)
-        minorTickSeconds = 25L          // 25秒
-    ),
-    FIVE_MINUTES(
-        label = "5分",
-        windowSeconds = 300L,           // 5分 (300秒)
-        majorTickSeconds = 60L,         // 1分 (12:00, 12:01, 12:02...)
-        minorTickSeconds = 12L          // 12秒
-    ),
-    ONE_MINUTE(
-        label = "1分",
-        windowSeconds = 60L,            // 1分 (60秒)
-        majorTickSeconds = 10L,         // 10秒 (12:00:00, 12:00:10...)
-        minorTickSeconds = 2L           // 2秒
-    );
+    THREE_DAYS(label = "3日", windowSeconds = 3 * 24 * 3600L, majorTickSeconds = 18 * 3600L, minorTickSeconds = 3 * 3600L),
+    ONE_DAY(label = "1日", windowSeconds = 24 * 3600L, majorTickSeconds = 6 * 3600L, minorTickSeconds = 1 * 3600L),
+    SIX_HOURS(label = "6時間", windowSeconds = 6 * 3600L, majorTickSeconds = 1 * 3600L, minorTickSeconds = 10 * 60L),
+    THREE_HOURS(label = "3時間", windowSeconds = 3 * 3600L, majorTickSeconds = 1 * 3600L, minorTickSeconds = 10 * 60L),
+    ONE_HALF_HOURS(label = "1.5時間", windowSeconds = 5400L, majorTickSeconds = 30 * 60L, minorTickSeconds = 5 * 60L),
+    THIRTY_MINUTES(label = "30分", windowSeconds = 1800L, majorTickSeconds = 10 * 60L, minorTickSeconds = 1 * 60L),
+    TEN_MINUTES(label = "10分", windowSeconds = 600L, majorTickSeconds = 2 * 60L, minorTickSeconds = 30L),
+    FIVE_MINUTES(label = "5分", windowSeconds = 300L, majorTickSeconds = 60L, minorTickSeconds = 10L),
+    ONE_MINUTE(label = "1分", windowSeconds = 60L, majorTickSeconds = 10L, minorTickSeconds = 2L);
 
     val windowMs: Long get() = windowSeconds * 1000L
     val majorTickMs: Long get() = majorTickSeconds * 1000L
@@ -109,21 +64,19 @@ private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
 data class MovieUiState(
     val videoUri: android.net.Uri? = null,
     val videos: List<VideoEntity> = emptyList(),
-    val videoOffsetsMs: List<Long> = emptyList(), // 各動画の累積開始ミリ秒 (0, D0, D0+D1, ...)
+    val videoOffsetsMs: List<Long> = emptyList(),
     val keyframes: List<CropImage> = emptyList(),
 
-    val currentTime: Float = 0f, // 全体時間軸における現在の再生時間 (秒)
-    val totalDurationSeconds: Float = 3600f, // 全体総再生時間 (秒)
+    val currentTime: Float = 0f,
+    val totalDurationSeconds: Float = 3600f,
 
-    // 時間スケール・フィルター状態
     val selectedTimeScale: TimeScale = TimeScale.SIX_HOURS,
-    val selectedClassFilter: String? = null, // null は「すべて」
-    val selectedColorFilter: ImageColor? = null, // null は「すべて」
-    val isLikedFilterOnly: Boolean = false, // true の場合「いいね」された画像のみ表示
+    val selectedClassFilter: String? = null,
+    val selectedColorFilter: ImageColor? = null,
+    val isLikedFilterOnly: Boolean = false,
     val availableClasses: List<String> = emptyList(),
     val availableColors: List<ImageColor> = ImageColor.entries,
 
-    // 統合グラフのバー別件数データ (要素数 = selectedTimeScale.barCount)
     val graphBarCounts: List<Int> = emptyList(),
     val maxBarCount: Int = 1,
 
@@ -132,15 +85,14 @@ data class MovieUiState(
 
     val initialMediaItemIndex: Int = 0,
     val initialPositionMs: Long = 0L,
-    val currentRealTimeMs: Long = 0L, // 現実絶対時刻 (Epoch ms)
-    val minRealTimeMs: Long = 0L,     // 動画ファイル群/キーフレームの最小現実時刻 (Epoch ms)
-    val maxRealTimeMs: Long = 0L,     // 動画ファイル群/キーフレームの最大現実時刻 (Epoch ms)
-    val seekTarget: SeekTarget? = null // ユーザー操作によるシーク要求
+    val currentRealTimeMs: Long = 0L,
+    val minRealTimeMs: Long = 0L,
+    val maxRealTimeMs: Long = 0L,
+    val seekTarget: SeekTarget? = null
 ) {
     val totalRealDurationMs: Long
         get() {
             val diff = maxRealTimeMs - minRealTimeMs
-            // 1秒 〜 30日間の正常範囲にガード。異常値（Epoch msの初期値等）の場合は動画合計再生時間にフォールバック
             return if (diff in 1000L..(30L * 24 * 3600 * 1000L)) {
                 diff
             } else {
