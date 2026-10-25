@@ -43,36 +43,36 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
- * TimeScale に連動した主目盛り（大きな目盛り）間隔 (ミリ秒) を取得する拡張関数
+ * TimeScale に連動した主目盛り（ゆったり余裕のある大目盛り）間隔 (ミリ秒) を取得する拡張関数
  */
 fun TimeScale.getTickIntervalMs(): Long {
     return when (this) {
-        TimeScale.THREE_DAYS -> 12 * 3600 * 1000L      // 12時間刻み
-        TimeScale.ONE_DAY -> 6 * 3600 * 1000L         // 6時間刻み (1日に4個)
-        TimeScale.SIX_HOURS -> 1 * 3600 * 1000L       // 1時間刻み
-        TimeScale.THREE_HOURS -> 30 * 60 * 1000L      // 30分刻み
-        TimeScale.ONE_HALF_HOURS -> 15 * 60 * 1000L   // 15分刻み
-        TimeScale.THIRTY_MINUTES -> 5 * 60 * 1000L    // 5分刻み
-        TimeScale.TEN_MINUTES -> 2 * 60 * 1000L       // 2分刻み
-        TimeScale.FIVE_MINUTES -> 60 * 1000L          // 1分刻み
-        TimeScale.ONE_MINUTE -> 10 * 1000L            // 10秒刻み
+        TimeScale.THREE_DAYS -> 24 * 3600 * 1000L     // 24時間 (1日) 刻み
+        TimeScale.ONE_DAY -> 6 * 3600 * 1000L         // 6時間 刻み
+        TimeScale.SIX_HOURS -> 2 * 3600 * 1000L       // 2時間 刻み (1画面にわずか3個)
+        TimeScale.THREE_HOURS -> 1 * 3600 * 1000L     // 1時間 刻み (1画面にわずか3個)
+        TimeScale.ONE_HALF_HOURS -> 30 * 60 * 1000L   // 30分 刻み (1画面にわずか3個)
+        TimeScale.THIRTY_MINUTES -> 10 * 60 * 1000L   // 10分 刻み (1画面にわずか3個)
+        TimeScale.TEN_MINUTES -> 5 * 60 * 1000L       // 5分 刻み (1画面にわずか2個)
+        TimeScale.FIVE_MINUTES -> 2 * 60 * 1000L + 30 * 1000L // 2.5分 (2分30秒) 刻み
+        TimeScale.ONE_MINUTE -> 20 * 1000L            // 20秒 刻み (1画面にわずか3個)
     }
 }
 
 /**
- * TimeScale に連動した副目盛り（小さい目盛り線）間隔 (ミリ秒) を取得する拡張関数
+ * TimeScale に連動した副目盛り（スッキリした小さい目盛り線）間隔 (ミリ秒) を取得する拡張関数
  */
 fun TimeScale.getSubTickIntervalMs(): Long? {
     return when (this) {
-        TimeScale.THREE_DAYS -> 2 * 3600 * 1000L      // 2時間刻み (大目盛り内6等分)
-        TimeScale.ONE_DAY -> 1 * 3600 * 1000L         // 1時間刻み (大目盛り内6等分)
-        TimeScale.SIX_HOURS -> 10 * 60 * 1000L        // 10分刻み (大目盛り内6等分)
-        TimeScale.THREE_HOURS -> 5 * 60 * 1000L       // 5分刻み (大目盛り内6等分)
-        TimeScale.ONE_HALF_HOURS -> 2 * 60 * 1000L + 30 * 1000L // 2.5分刻み (大目盛り内6等分)
-        TimeScale.THIRTY_MINUTES -> 1 * 60 * 1000L    // 1分刻み (大目盛り内5等分)
-        TimeScale.TEN_MINUTES -> 20 * 1000L          // 20秒刻み (大目盛り内6等分)
-        TimeScale.FIVE_MINUTES -> 10 * 1000L          // 10秒刻み (大目盛り内6等分)
-        TimeScale.ONE_MINUTE -> 2 * 1000L             // 2秒刻み (大目盛り内5等分)
+        TimeScale.THREE_DAYS -> 6 * 3600 * 1000L      // 6時間 刻み
+        TimeScale.ONE_DAY -> 1 * 3600 * 1000L         // 1時間 刻み
+        TimeScale.SIX_HOURS -> 30 * 60 * 1000L        // 30分 刻み (大目盛り間を4等分)
+        TimeScale.THREE_HOURS -> 15 * 60 * 1000L      // 15分 刻み (大目盛り間を4等分)
+        TimeScale.ONE_HALF_HOURS -> 10 * 60 * 1000L   // 10分 刻み (大目盛り間を3等分)
+        TimeScale.THIRTY_MINUTES -> 5 * 60 * 1000L    // 5分 刻み (大目盛り間を2等分)
+        TimeScale.TEN_MINUTES -> 1 * 60 * 1000L + 15 * 1000L // 1.25分 (1分15秒) 刻み (大目盛り間を4等分)
+        TimeScale.FIVE_MINUTES -> 30 * 1000L          // 30秒 刻み (大目盛り間を5等分)
+        TimeScale.ONE_MINUTE -> 5 * 1000L             // 5秒 刻み (大目盛り間を4等分)
     }
 }
 
@@ -89,7 +89,7 @@ private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
 
 /**
  * =========================================================================================
- * 【統合グラフ (Unified Graph Area) - 全スケール全同スタイル（大目盛り/小目盛り連動）版】
+ * 【統合グラフ (Unified Graph Area) - 広々余裕のある間隔・極限スッキリ目盛り版】
  * =========================================================================================
  */
 @Composable
@@ -631,7 +631,7 @@ fun UnifiedGraphArea(
                         }
                     }
 
-                    // 2. 選択された TimeScale に完全自動連動し、1日表示と同様の大きな目盛り/小さな目盛りスタイルを適用
+                    // 2. 選択された TimeScale に完全自動連動し、ゆったり広々な目盛りスタイルを適用
                     UnifiedTimeTicks(
                         uiState = uiState,
                         minReal = minReal,
@@ -646,7 +646,7 @@ fun UnifiedGraphArea(
 }
 
 /**
- * 画面横スライド・TimeScale に直結・完全連動し、1日表示と同様の「大きな目盛り」「小さな目盛り」で揃えた動的目盛りラベル
+ * 画面横スライド・TimeScale に直結・完全連動し、ゆったり広々とした目盛りラベル
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -694,7 +694,7 @@ fun UnifiedTimeTicks(
                         val x = (progress * canvasWidth).toFloat()
 
                         drawLine(
-                            color = subTickLineColor.copy(alpha = 0.6f),
+                            color = subTickLineColor.copy(alpha = 0.5f),
                             start = Offset(x, 0f),
                             end = Offset(x, 3.5.dp.toPx()),
                             strokeWidth = 1.0.dp.toPx()
@@ -704,7 +704,7 @@ fun UnifiedTimeTicks(
                 }
             }
 
-            // 2. 主目盛り（大きな目盛り線）＆数値ラベルの描画（1日表示と同等の統一スタイル）
+            // 2. 主目盛り（ゆったり大きな目盛り線）＆数値ラベルの描画
             val firstTick = alignToRoundTime(visibleStartMs, intervalMs)
             val lastTick = alignToRoundTime(visibleEndMs, intervalMs) + intervalMs
 
@@ -716,7 +716,7 @@ fun UnifiedTimeTicks(
 
             var tickTimeMs = firstTick
             var lastDrawnX = -1000f
-            val minTextPaddingPx = 35.dp.toPx()
+            val minTextPaddingPx = 65.dp.toPx() // テキスト間の余白を十分に拡大
 
             while (tickTimeMs <= lastTick && tickTimeMs <= maxReal + intervalMs) {
                 if (tickTimeMs >= minReal) {
