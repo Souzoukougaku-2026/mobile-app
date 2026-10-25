@@ -596,7 +596,7 @@ fun UnifiedGraphArea(
                         }
                     }
 
-                    // 2. 選択された TimeScale に完全自動連動し、1日表示と同じ正時アライン（30分/15分/10分等）を適用
+                    // 2. 選択された TimeScale で指定された刻み通り 100% 確実に大目盛り・小目盛りを描画
                     UnifiedTimeTicks(
                         uiState = uiState,
                         minReal = minReal,
@@ -611,7 +611,7 @@ fun UnifiedGraphArea(
 }
 
 /**
- * 画面横スライド・TimeScale に直結・完全連動し、直感的な正時時刻で整列された動的目盛りラベル
+ * 画面横スライド・TimeScale に直結・完全連動し、指定された majorTickMs / minorTickMs を確実に全描画する目盛り
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -647,27 +647,29 @@ fun UnifiedTimeTicks(
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
 
-            // 1. 副目盛り（小目盛り線）の描画（大目盛り間を綺麗に3〜6等分）
-            val firstSubTick = alignToRoundTime(visibleStartMs, subIntervalMs)
-            val lastSubTick = alignToRoundTime(visibleEndMs, subIntervalMs) + subIntervalMs
-            var subTimeMs = firstSubTick
+            // 1. 副目盛り（小目盛り線）の描画（指定された minorTickMs で確実に描画）
+            if (subIntervalMs > 0L) {
+                val firstSubTick = alignToRoundTime(visibleStartMs, subIntervalMs)
+                val lastSubTick = alignToRoundTime(visibleEndMs, subIntervalMs) + subIntervalMs
+                var subTimeMs = firstSubTick
 
-            while (subTimeMs <= lastSubTick && subTimeMs <= maxReal + subIntervalMs) {
-                if (subTimeMs >= minReal) {
-                    val progress = ((subTimeMs - minReal).toDouble() / spanMs.toDouble()).coerceIn(0.0, 1.0)
-                    val x = (progress * canvasWidth).toFloat()
+                while (subTimeMs <= lastSubTick && subTimeMs <= maxReal + subIntervalMs) {
+                    if (subTimeMs >= minReal) {
+                        val progress = ((subTimeMs - minReal).toDouble() / spanMs.toDouble()).coerceIn(0.0, 1.0)
+                        val x = (progress * canvasWidth).toFloat()
 
-                    drawLine(
-                        color = subTickLineColor.copy(alpha = 0.5f),
-                        start = Offset(x, 0f),
-                        end = Offset(x, 3.5.dp.toPx()),
-                        strokeWidth = 1.0.dp.toPx()
-                    )
+                        drawLine(
+                            color = subTickLineColor.copy(alpha = 0.5f),
+                            start = Offset(x, 0f),
+                            end = Offset(x, 3.5.dp.toPx()),
+                            strokeWidth = 1.0.dp.toPx()
+                        )
+                    }
+                    subTimeMs += subIntervalMs
                 }
-                subTimeMs += subIntervalMs
             }
 
-            // 2. 主目盛り（大きな目盛り線）＆正時時刻ラベルの描画
+            // 2. 主目盛り（大目盛り線＆数値ラベル）の描画（指定された majorTickMs で100%確実に全描画）
             val firstTick = alignToRoundTime(visibleStartMs, intervalMs)
             val lastTick = alignToRoundTime(visibleEndMs, intervalMs) + intervalMs
 
@@ -678,40 +680,34 @@ fun UnifiedTimeTicks(
             }
 
             var tickTimeMs = firstTick
-            var lastDrawnX = -1000f
-            val minTextPaddingPx = 35.dp.toPx()
 
             while (tickTimeMs <= lastTick && tickTimeMs <= maxReal + intervalMs) {
                 if (tickTimeMs >= minReal) {
                     val progress = ((tickTimeMs - minReal).toDouble() / spanMs.toDouble()).coerceIn(0.0, 1.0)
                     val x = (progress * canvasWidth).toFloat()
 
-                    if (x - lastDrawnX >= minTextPaddingPx || lastDrawnX < 0f) {
-                        lastDrawnX = x
+                    // 大きな主目盛り線
+                    drawLine(
+                        color = tickLineColor,
+                        start = Offset(x, 0f),
+                        end = Offset(x, 7.0.dp.toPx()),
+                        strokeWidth = 1.5.dp.toPx()
+                    )
 
-                        // 大きな主目盛り線
-                        drawLine(
-                            color = tickLineColor,
-                            start = Offset(x, 0f),
-                            end = Offset(x, 7.0.dp.toPx()),
-                            strokeWidth = 1.5.dp.toPx()
-                        )
+                    val label = timeSdf.format(Date(tickTimeMs))
 
-                        val label = timeSdf.format(Date(tickTimeMs))
-
-                        drawContext.canvas.nativeCanvas.drawText(
-                            label,
-                            x,
-                            size.height - 2.dp.toPx(),
-                            android.graphics.Paint().apply {
-                                color = tickTextColor
-                                textSize = 10.dp.toPx()
-                                isAntiAlias = true
-                                isFakeBoldText = true
-                                textAlign = android.graphics.Paint.Align.CENTER
-                            }
-                        )
-                    }
+                    drawContext.canvas.nativeCanvas.drawText(
+                        label,
+                        x,
+                        size.height - 2.dp.toPx(),
+                        android.graphics.Paint().apply {
+                            color = tickTextColor
+                            textSize = 10.dp.toPx()
+                            isAntiAlias = true
+                            isFakeBoldText = true
+                            textAlign = android.graphics.Paint.Align.CENTER
+                        }
+                    )
                 }
                 tickTimeMs += intervalMs
             }
@@ -817,7 +813,7 @@ fun GraphControlArea(
                             text = { Text(color.displayName) },
                             onClick = {
                                 onColorFilterSelected(color)
-                                colorMenuExpanded = false
+                                classMenuExpanded = false
                             }
                         )
                     }
