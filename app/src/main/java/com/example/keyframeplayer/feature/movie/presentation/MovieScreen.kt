@@ -150,9 +150,8 @@ fun MovieScreen(
 
     // シーク操作ハンドラ: 動画が無いエリアで止まった場合に、移動方向（右:次の先頭 / 左:前の末尾）に応じてシークし、Snackbarを表示
     val handleProgressTapped: (Float) -> Unit = { overallProgress ->
-        val scaleWindowMs = (uiState.selectedTimeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
-        val spanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
-        val targetRealTimeMs = uiState.minRealTimeMs + (overallProgress * spanMs).toLong()
+        val (minRealTimeMs, spanMs) = uiState.getAlignedBounds()
+        val targetRealTimeMs = minRealTimeMs + (overallProgress * spanMs).toLong()
 
         val isInVideoRange = uiState.videos.any { video ->
             targetRealTimeMs in video.realStartTime..video.realEndTime
@@ -170,7 +169,7 @@ fun MovieScreen(
 
                 if (candidateVideo != null) {
                     val targetProgress = if (spanMs > 0L) {
-                        ((candidateVideo.realStartTime - uiState.minRealTimeMs).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                        ((candidateVideo.realStartTime - minRealTimeMs).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
                     } else 0f
 
                     onProgressTapped(targetProgress)
@@ -195,7 +194,7 @@ fun MovieScreen(
 
                 if (candidateVideo != null) {
                     val targetProgress = if (spanMs > 0L) {
-                        ((candidateVideo.realEndTime - uiState.minRealTimeMs).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                        ((candidateVideo.realEndTime - minRealTimeMs).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
                     } else 0f
 
                     onProgressTapped(targetProgress)

@@ -4,6 +4,8 @@ import androidx.compose.runtime.Immutable
 import com.example.keyframeplayer.core.data.database.entity.VideoEntity
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
+import com.example.keyframeplayer.feature.movie.presentation.components.getTickIntervalMs
+import java.util.TimeZone
 
 enum class TimeScale(
     val label: String,
@@ -39,6 +41,14 @@ enum class TimeScale(
         val idx = entries.indexOf(this)
         return if (idx > 0) entries[idx - 1] else this
     }
+}
+
+private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
+    if (intervalMs <= 0L) return timeMs
+    val tzOffset = TimeZone.getDefault().getOffset(timeMs)
+    val localMs = timeMs + tzOffset
+    val alignedLocalMs = (localMs / intervalMs) * intervalMs
+    return alignedLocalMs - tzOffset
 }
 
 @Immutable
@@ -90,6 +100,26 @@ data class MovieUiState(
             val spanMs = maxOf(totalRealDurationMs.toFloat(), scaleWindowMs)
             return (scaleWindowMs / spanMs).coerceIn(0.05f, 1f)
         }
+
+    /**
+     * 選択されている TimeScale の正時目盛り刻みに完全に合致した【アライン済みの開始絶対時刻(ms)】と【総時間幅(ms)】を取得する
+     */
+    fun getAlignedBounds(): Pair<Long, Long> {
+        val intervalMs = selectedTimeScale.getTickIntervalMs()
+        val scaleWindowMs = (selectedTimeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+
+        val rawMinReal = minRealTimeMs
+        val rawSpanMs = maxOf(totalRealDurationMs, scaleWindowMs)
+        val rawMaxReal = rawMinReal + rawSpanMs
+
+        val minReal = alignToRoundTime(rawMinReal, intervalMs)
+        var alignedMaxReal = alignToRoundTime(rawMaxReal, intervalMs)
+        if (alignedMaxReal < minReal + scaleWindowMs) {
+            alignedMaxReal = minReal + scaleWindowMs
+        }
+        val spanMs = alignedMaxReal - minReal
+        return minReal to spanMs
+    }
 }
 
 data class SeekTarget(

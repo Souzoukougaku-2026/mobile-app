@@ -50,7 +50,7 @@ fun TimeScale.getTickIntervalMs(): Long {
     return when (this) {
         TimeScale.THREE_DAYS -> 12 * 3600 * 1000L      // 12時間刻み
         TimeScale.ONE_DAY -> 6 * 3600 * 1000L         // 6時間刻み (00:00, 06:00, 12:00, 18:00)
-        TimeScale.SIX_HOURS -> 1 * 3600 * 1000L       // 1時間刻み (12:00, 13:00, 14:00...)
+        TimeScale.SIX_HOURS -> 6 * 3600 * 1000L       // 1時間刻み (12:00, 13:00, 14:00...)
         TimeScale.THREE_HOURS -> 30 * 60 * 1000L      // 30分刻み (12:00, 12:30, 13:00, 13:30...)
         TimeScale.ONE_HALF_HOURS -> 15 * 60 * 1000L   // 15分刻み (12:00, 12:15, 12:30...)
         TimeScale.THIRTY_MINUTES -> 5 * 60 * 1000L    // 5分刻み (12:00, 12:05, 12:10...)
@@ -67,13 +67,13 @@ fun TimeScale.getSubTickIntervalMs(): Long {
     return when (this) {
         TimeScale.THREE_DAYS -> 2 * 3600 * 1000L      // 2時間刻み
         TimeScale.ONE_DAY -> 1 * 3600 * 1000L         // 1時間刻み
-        TimeScale.SIX_HOURS -> 10 * 60 * 1000L        // 10分刻み (1時間を6等分)
-        TimeScale.THREE_HOURS -> 10 * 60 * 1000L      // 10分刻み (30分間を3等分)
-        TimeScale.ONE_HALF_HOURS -> 5 * 60 * 1000L    // 5分刻み (15分間を3等分)
-        TimeScale.THIRTY_MINUTES -> 1 * 60 * 1000L    // 1分刻み (5分間を5等分)
-        TimeScale.TEN_MINUTES -> 30 * 1000L           // 30秒刻み (2分間を4等分)
-        TimeScale.FIVE_MINUTES -> 10 * 1000L          // 10秒刻み (1分間を6等分)
-        TimeScale.ONE_MINUTE -> 2 * 1000L             // 2秒刻み (10秒間を5等分)
+        TimeScale.SIX_HOURS -> 60 * 60 * 1000L        // 10分刻み (1時間を6等分)
+        TimeScale.THREE_HOURS -> 20 * 60 * 1000L      // 10分刻み (30分間を3等分)
+        TimeScale.ONE_HALF_HOURS -> 15 * 60 * 1000L    // 5分刻み (15分間を3等分)
+        TimeScale.THIRTY_MINUTES -> 5 * 60 * 1000L    // 1分刻み (5分間を5等分)
+        TimeScale.TEN_MINUTES -> 1 * 1000L           // 30秒刻み (2分間を4等分)
+        TimeScale.FIVE_MINUTES -> 1 * 1000L          // 10秒刻み (1分間を6等分)
+        TimeScale.ONE_MINUTE -> 1 * 1000L             // 2秒刻み (10秒間を5等分)
     }
 }
 
@@ -105,20 +105,8 @@ fun UnifiedGraphArea(
     val coroutineScope = rememberCoroutineScope()
 
     val timeScale = uiState.selectedTimeScale
-    val intervalMs = timeScale.getTickIntervalMs()
     val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
-
-    val rawMinReal = uiState.minRealTimeMs
-    val rawSpanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
-    val rawMaxReal = rawMinReal + rawSpanMs
-
-    // 目盛りの時間帯（正時）にキャンバスの開始・終了時刻をピッタリ揃える
-    val minReal = alignToRoundTime(rawMinReal, intervalMs)
-    var alignedMaxReal = alignToRoundTime(rawMaxReal, intervalMs)
-    if (alignedMaxReal < minReal + scaleWindowMs) {
-        alignedMaxReal = minReal + scaleWindowMs
-    }
-    val spanMs = alignedMaxReal - minReal
+    val (minReal, spanMs) = uiState.getAlignedBounds()
 
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
