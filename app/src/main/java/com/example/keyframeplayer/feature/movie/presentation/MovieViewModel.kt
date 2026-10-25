@@ -255,7 +255,7 @@ class MovieViewModel @Inject constructor(
         val rawSpanMs = maxOf(state.totalRealDurationMs, scaleWindowMs)
         val rawMaxReal = rawMinReal + rawSpanMs
 
-        // 目盛り時間帯（正時）にアライン
+        // 目盛り時間帯にアライン
         val alignedMinReal = alignToRoundTime(rawMinReal, intervalMs)
         var alignedMaxReal = alignToRoundTime(rawMaxReal, intervalMs)
         if (alignedMaxReal < alignedMinReal + scaleWindowMs) {
