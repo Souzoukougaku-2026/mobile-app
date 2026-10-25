@@ -10,14 +10,24 @@ import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.domain.MovieRepository
+import com.example.keyframeplayer.feature.movie.presentation.components.getTickIntervalMs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.TimeZone
 import java.util.UUID
 import javax.inject.Inject
+
+private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
+    if (intervalMs <= 0L) return timeMs
+    val tzOffset = TimeZone.getDefault().getOffset(timeMs)
+    val localMs = timeMs + tzOffset
+    val alignedLocalMs = (localMs / intervalMs) * intervalMs
+    return alignedLocalMs - tzOffset
+}
 
 @HiltViewModel
 class MovieViewModel @Inject constructor(
@@ -238,8 +248,20 @@ class MovieViewModel @Inject constructor(
         val classFilter = state.selectedClassFilter
         val colorFilter = state.selectedColorFilter
         val likedFilterOnly = state.isLikedFilterOnly
-        val minRealTimeMs = state.minRealTimeMs
-        val totalRealDurationMs = state.totalRealDurationMs
+        val intervalMs = timeScale.getTickIntervalMs()
+
+        val rawMinReal = state.minRealTimeMs
+        val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+        val rawSpanMs = maxOf(state.totalRealDurationMs, scaleWindowMs)
+        val rawMaxReal = rawMinReal + rawSpanMs
+
+        // 目盛り時間帯（正時）にアライン
+        val alignedMinReal = alignToRoundTime(rawMinReal, intervalMs)
+        var alignedMaxReal = alignToRoundTime(rawMaxReal, intervalMs)
+        if (alignedMaxReal < alignedMinReal + scaleWindowMs) {
+            alignedMaxReal = alignedMinReal + scaleWindowMs
+        }
+        val spanMs = (alignedMaxReal - alignedMinReal).toDouble()
 
         // 1. 条件（クラス・色・いいね）で CropImage を絞り込み
         val filtered = keyframes.filter { item ->
@@ -249,16 +271,12 @@ class MovieViewModel @Inject constructor(
         }
 
         // 2. 1画面幅(scaleWindowMs)をぴったり90分割するバケット幅(ms)の計算
-        val scaleWindowMs = (timeScale.totalSeconds * 1000f).toDouble().coerceAtLeast(1000.0)
-        val bucketMs = scaleWindowMs / 90.0
-        val spanMs = maxOf(totalRealDurationMs.toDouble(), scaleWindowMs)
-
-        // 全時間軸(spanMs)における総バー数 (1画面でぴったり90分割)
+        val bucketMs = (scaleWindowMs.toDouble() / 90.0).coerceAtLeast(1.0)
         val totalBarCount = (spanMs / bucketMs).toInt().coerceAtLeast(90)
         val counts = IntArray(totalBarCount)
 
         for (item in filtered) {
-            val diffMs = (item.realTime - minRealTimeMs).toDouble()
+            val diffMs = (item.realTime - alignedMinReal).toDouble()
             if (diffMs >= 0.0) {
                 val index = (diffMs / bucketMs).toInt()
                 if (index in 0 until totalBarCount) {

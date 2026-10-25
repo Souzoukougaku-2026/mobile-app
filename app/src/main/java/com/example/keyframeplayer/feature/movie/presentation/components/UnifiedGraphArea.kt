@@ -47,14 +47,14 @@ import kotlin.math.floor
  */
 fun TimeScale.getTickIntervalMs(): Long {
     return when (this) {
-        TimeScale.THREE_DAYS -> 6 * 3600 * 1000L      // 6時間刻み
-        TimeScale.ONE_DAY -> 3 * 3600 * 1000L         // 3時間刻み
+        TimeScale.THREE_DAYS -> 12 * 3600 * 1000L      // 12時間刻み
+        TimeScale.ONE_DAY -> 6 * 3600 * 1000L         // 6時間刻み (1日に4個)
         TimeScale.SIX_HOURS -> 1 * 3600 * 1000L       // 1時間刻み
         TimeScale.THREE_HOURS -> 30 * 60 * 1000L      // 30分刻み
         TimeScale.ONE_HALF_HOURS -> 15 * 60 * 1000L   // 15分刻み
         TimeScale.THIRTY_MINUTES -> 5 * 60 * 1000L    // 5分刻み
-        TimeScale.TEN_MINUTES -> 1 * 60 * 1000L       // 1分刻み
-        TimeScale.FIVE_MINUTES -> 30 * 1000L          // 30秒刻み
+        TimeScale.TEN_MINUTES -> 2 * 60 * 1000L       // 2分刻み
+        TimeScale.FIVE_MINUTES -> 60 * 1000L          // 1分刻み
         TimeScale.ONE_MINUTE -> 10 * 1000L            // 10秒刻み
     }
 }
@@ -64,14 +64,14 @@ fun TimeScale.getTickIntervalMs(): Long {
  */
 fun TimeScale.getSubTickIntervalMs(): Long? {
     return when (this) {
-        TimeScale.THREE_DAYS -> 1 * 3600 * 1000L      // 1時間刻み
+        TimeScale.THREE_DAYS -> 2 * 3600 * 1000L      // 2時間刻み
         TimeScale.ONE_DAY -> 1 * 3600 * 1000L         // 1時間刻み
         TimeScale.SIX_HOURS -> 15 * 60 * 1000L        // 15分刻み
         TimeScale.THREE_HOURS -> 10 * 60 * 1000L      // 10分刻み
         TimeScale.ONE_HALF_HOURS -> 5 * 60 * 1000L    // 5分刻み
         TimeScale.THIRTY_MINUTES -> 1 * 60 * 1000L    // 1分刻み
-        TimeScale.TEN_MINUTES -> 15 * 1000L          // 15秒刻み
-        TimeScale.FIVE_MINUTES -> 10 * 1000L          // 10秒刻み
+        TimeScale.TEN_MINUTES -> 30 * 1000L          // 30秒刻み
+        TimeScale.FIVE_MINUTES -> 15 * 1000L          // 15秒刻み
         TimeScale.ONE_MINUTE -> 2 * 1000L             // 2秒刻み
     }
 }
@@ -89,7 +89,7 @@ private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
 
 /**
  * =========================================================================================
- * 【統合グラフ (Unified Graph Area) - 90分割ぴったり比率・キリの良い正時目盛り整列版】
+ * 【統合グラフ (Unified Graph Area) - 90分割・目盛り正時アライン（グリッド完全整合）版】
  * =========================================================================================
  */
 @Composable
@@ -104,9 +104,20 @@ fun UnifiedGraphArea(
     val coroutineScope = rememberCoroutineScope()
 
     val timeScale = uiState.selectedTimeScale
-    val minReal = uiState.minRealTimeMs
+    val intervalMs = timeScale.getTickIntervalMs()
     val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
-    val spanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
+
+    val rawMinReal = uiState.minRealTimeMs
+    val rawSpanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
+    val rawMaxReal = rawMinReal + rawSpanMs
+
+    // 目盛りの時間帯（正時）にキャンバスの開始・終了時刻をピッタリ揃える
+    val minReal = alignToRoundTime(rawMinReal, intervalMs)
+    var alignedMaxReal = alignToRoundTime(rawMaxReal, intervalMs)
+    if (alignedMaxReal < minReal + scaleWindowMs) {
+        alignedMaxReal = minReal + scaleWindowMs
+    }
+    val spanMs = alignedMaxReal - minReal
 
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
@@ -623,6 +634,8 @@ fun UnifiedGraphArea(
                     // 2. 選択された TimeScale に完全自動連動し、キリの良い正時に揃えた目盛り
                     UnifiedTimeTicks(
                         uiState = uiState,
+                        minReal = minReal,
+                        spanMs = spanMs,
                         scrollOffset = scrollState.value.toFloat(),
                         viewportWidthPx = viewportWidthPx
                     )
@@ -638,6 +651,8 @@ fun UnifiedGraphArea(
 @Composable
 fun UnifiedTimeTicks(
     uiState: MovieUiState,
+    minReal: Long,
+    spanMs: Long,
     scrollOffset: Float,
     viewportWidthPx: Float
 ) {
@@ -657,9 +672,6 @@ fun UnifiedTimeTicks(
                 .height(24.dp)
         ) {
             val canvasWidth = size.width
-            val minReal = uiState.minRealTimeMs
-            val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
-            val spanMs = maxOf(uiState.totalRealDurationMs, scaleWindowMs)
             val maxReal = minReal + spanMs
 
             if (canvasWidth <= 0f || spanMs <= 0L) return@Canvas
