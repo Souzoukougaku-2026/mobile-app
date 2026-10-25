@@ -21,57 +21,57 @@ enum class TimeScale(
 ) {
     THREE_DAYS(
         label = "3日",
-        windowSeconds = 3 * 24 * 3600L, // 72時間
-        majorTickSeconds = 24 * 3600L,  // 12時間
-        minorTickSeconds = 6 * 3600L    // 2時間
+        windowSeconds = 3 * 24 * 3600L, // 72時間 (259200秒)
+        majorTickSeconds = 18 * 3600L,  // 18時間 (72h / 4)
+        minorTickSeconds = 3 * 3600L    // 3時間 (72h / 24)
     ),
     ONE_DAY(
         label = "1日",
-        windowSeconds = 24 * 3600L,     // 24時間
-        majorTickSeconds = 6 * 3600L,   // 6時間 (00:00, 06:00, 12:00, 18:00)
-        minorTickSeconds = 1 * 3600L    // 1時間
+        windowSeconds = 24 * 3600L,     // 24時間 (86400秒)
+        majorTickSeconds = 6 * 3600L,   // 6時間 (24h / 4) [★1日表示の基準スタイル]
+        minorTickSeconds = 1 * 3600L    // 1時間 (24h / 24)
     ),
     SIX_HOURS(
         label = "6時間",
-        windowSeconds = 6 * 3600L,      // 6時間
-        majorTickSeconds = 1 * 3600L,   // 1時間 (12:00, 13:00, 14:00...)
-        minorTickSeconds = 10 * 60L     // 10分
+        windowSeconds = 6 * 3600L,      // 6時間 (21600秒)
+        majorTickSeconds = 5400L,       // 1.5時間 (90分 = 6h / 4)
+        minorTickSeconds = 900L         // 15分 (6h / 24)
     ),
     THREE_HOURS(
         label = "3時間",
-        windowSeconds = 3 * 3600L,      // 3時間
-        majorTickSeconds = 1 * 3600L,   // 1時間 (12:00, 13:00, 14:00, 15:00)
-        minorTickSeconds = 10 * 60L     // 10分 (1時間を6等分)
+        windowSeconds = 3 * 3600L,      // 3時間 (10800秒)
+        majorTickSeconds = 2700L,       // 45分 (3h / 4)
+        minorTickSeconds = 450L         // 7.5分 (7分30秒 = 3h / 24)
     ),
     ONE_HALF_HOURS(
         label = "1.5時間",
-        windowSeconds = 5400L,          // 1.5時間 (90分)
-        majorTickSeconds = 30 * 60L,    // 30分 (12:00, 12:30, 13:00...)
-        minorTickSeconds = 5 * 60L      // 5分
+        windowSeconds = 5400L,          // 1.5時間 (90分 = 5400秒)
+        majorTickSeconds = 1350L,       // 22.5分 (22分30秒 = 1.5h / 4)
+        minorTickSeconds = 225L         // 3.75分 (3分45秒 = 1.5h / 24)
     ),
     THIRTY_MINUTES(
         label = "30分",
-        windowSeconds = 1800L,          // 30分
-        majorTickSeconds = 10 * 60L,    // 10分 (12:00, 12:10, 12:20...)
-        minorTickSeconds = 2 * 60L      // 1分
+        windowSeconds = 1800L,          // 30分 (1800秒)
+        majorTickSeconds = 450L,        // 7.5分 (7分30秒 = 30m / 4)
+        minorTickSeconds = 75L          // 1.25分 (1分15秒 = 30m / 24)
     ),
     TEN_MINUTES(
         label = "10分",
-        windowSeconds = 600L,           // 10分
-        majorTickSeconds = 2 * 60L,     // 2分 (12:00, 12:02, 12:04...)
-        minorTickSeconds = 30L          // 30秒
+        windowSeconds = 600L,           // 10分 (600秒)
+        majorTickSeconds = 150L,        // 2.5分 (2分30秒 = 10m / 4)
+        minorTickSeconds = 25L          // 25秒 (10m / 24)
     ),
     FIVE_MINUTES(
         label = "5分",
-        windowSeconds = 300L,           // 5分
-        majorTickSeconds = 60L,         // 1分 (12:00, 12:01, 12:02...)
-        minorTickSeconds = 10L          // 10秒
+        windowSeconds = 300L,           // 5分 (300秒)
+        majorTickSeconds = 75L,         // 1.25分 (1分15秒 = 5m / 4)
+        minorTickSeconds = 12L          // 12.5秒 (5m / 24)
     ),
     ONE_MINUTE(
         label = "1分",
-        windowSeconds = 60L,            // 1分
-        majorTickSeconds = 10L,         // 10秒 (12:00:00, 12:00:10...)
-        minorTickSeconds = 2L           // 2秒
+        windowSeconds = 60L,            // 1分 (60秒)
+        majorTickSeconds = 15L,         // 15秒 (1m / 4)
+        minorTickSeconds = 2L           // 2.5秒 (1m / 24)
     );
 
     val windowMs: Long get() = windowSeconds * 1000L
