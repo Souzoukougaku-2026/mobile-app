@@ -17,17 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.TimeZone
 import java.util.UUID
 import javax.inject.Inject
-
-private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
-    if (intervalMs <= 0L) return timeMs
-    val tzOffset = TimeZone.getDefault().getOffset(timeMs)
-    val localMs = timeMs + tzOffset
-    val alignedLocalMs = (localMs / intervalMs) * intervalMs
-    return alignedLocalMs - tzOffset
-}
 
 @HiltViewModel
 class MovieViewModel @Inject constructor(
@@ -248,20 +239,10 @@ class MovieViewModel @Inject constructor(
         val classFilter = state.selectedClassFilter
         val colorFilter = state.selectedColorFilter
         val likedFilterOnly = state.isLikedFilterOnly
-        val intervalMs = timeScale.getTickIntervalMs()
 
-        val rawMinReal = state.minRealTimeMs
+        val minRealTimeMs = state.minRealTimeMs
         val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
-        val rawSpanMs = maxOf(state.totalRealDurationMs, scaleWindowMs)
-        val rawMaxReal = rawMinReal + rawSpanMs
-
-        // 目盛り時間帯にアライン
-        val alignedMinReal = alignToRoundTime(rawMinReal, intervalMs)
-        var alignedMaxReal = alignToRoundTime(rawMaxReal, intervalMs)
-        if (alignedMaxReal < alignedMinReal + scaleWindowMs) {
-            alignedMaxReal = alignedMinReal + scaleWindowMs
-        }
-        val spanMs = (alignedMaxReal - alignedMinReal).toDouble()
+        val spanMs = maxOf(state.totalRealDurationMs, scaleWindowMs).toDouble()
 
         // 1. 条件（クラス・色・いいね）で CropImage を絞り込み
         val filtered = keyframes.filter { item ->
@@ -276,7 +257,7 @@ class MovieViewModel @Inject constructor(
         val counts = IntArray(totalBarCount)
 
         for (item in filtered) {
-            val diffMs = (item.realTime - alignedMinReal).toDouble()
+            val diffMs = (item.realTime - minRealTimeMs).toDouble()
             if (diffMs >= 0.0) {
                 val index = (diffMs / bucketMs).toInt()
                 if (index in 0 until totalBarCount) {
@@ -373,7 +354,9 @@ class MovieViewModel @Inject constructor(
 
     fun onProgressTapped(progress: Float) {
         val state = _uiState.value
-        val (minRealTimeMs, spanMs) = state.getAlignedBounds()
+        val minRealTimeMs = state.minRealTimeMs
+        val scaleWindowMs = (state.selectedTimeScale.totalSeconds * 1000f).toLong().coerceAtLeast(1000L)
+        val spanMs = maxOf(state.totalRealDurationMs, scaleWindowMs)
         val targetRealTimeMs = minRealTimeMs + (progress.coerceIn(0f, 1f) * spanMs).toLong()
 
         val videos = state.videos
