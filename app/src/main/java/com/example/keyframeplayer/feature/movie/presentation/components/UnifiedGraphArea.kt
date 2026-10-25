@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -76,8 +77,19 @@ fun TimeScale.getSubTickIntervalMs(): Long? {
 }
 
 /**
+ * Epochミリ秒をタイムゾーン考慮の「キリの良い正時（00分, 15分, 30分や00秒等）」に切り揃えるヘルパー関数
+ */
+private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
+    if (intervalMs <= 0L) return timeMs
+    val tzOffset = TimeZone.getDefault().getOffset(timeMs)
+    val localMs = timeMs + tzOffset
+    val alignedLocalMs = (localMs / intervalMs) * intervalMs
+    return alignedLocalMs - tzOffset
+}
+
+/**
  * =========================================================================================
- * 【統合グラフ (Unified Graph Area) - 選択スケール完全連動・30分以下短時間精密目盛り対応版】
+ * 【統合グラフ (Unified Graph Area) - 90分割ぴったり比率・キリの良い正時目盛り整列版】
  * =========================================================================================
  */
 @Composable
@@ -507,17 +519,15 @@ fun UnifiedGraphArea(
                             }
                         }
 
-                        // 3. 集計データバーの描画 (可視領域のみを描画するパフォーマンス最適化)
+                        // 3. 集計データバーの描画 (画面1幅にぴったり90分割分が入る完璧なアスペクト比で描画)
                         val barCounts = uiState.graphBarCounts
                         val totalBarCount = barCounts.size
                         if (totalBarCount > 0) {
                             val scrollOffset = scrollState.value.toFloat()
-                            val spacing = 0.5.dp.toPx()
-                            val barWidth = ((canvasWidth - (spacing * (totalBarCount + 1))) / totalBarCount).coerceAtLeast(1f)
-                            val stepWidth = barWidth + spacing
+                            val barWidth = canvasWidth / totalBarCount.toFloat()
 
-                            val firstVisibleIndex = floor((scrollOffset - 16.dp.toPx()) / stepWidth).toInt().coerceAtLeast(0)
-                            val lastVisibleIndex = ceil((scrollOffset + viewportWidthPx) / stepWidth).toInt().coerceAtMost(totalBarCount - 1)
+                            val firstVisibleIndex = floor(scrollOffset / barWidth).toInt().coerceAtLeast(0)
+                            val lastVisibleIndex = ceil((scrollOffset + viewportWidthPx) / barWidth).toInt().coerceAtMost(totalBarCount - 1)
 
                             val maxCount = uiState.maxBarCount.toFloat().coerceAtLeast(1f)
                             val cProgress = if (spanMs > 0L) {
@@ -529,7 +539,10 @@ fun UnifiedGraphArea(
                                 val count = barCounts.getOrNull(i) ?: 0
                                 if (count <= 0) continue
 
-                                val left = spacing + (i * stepWidth)
+                                val left = i * barWidth
+                                val drawWidth = (barWidth * 0.82f).coerceAtLeast(1f)
+                                val inset = (barWidth - drawWidth) / 2f
+
                                 val barHeightRatio = count.toFloat() / maxCount
                                 val barHeightPx = (canvasHeight * 0.75f) * barHeightRatio
                                 val top = canvasHeight - barHeightPx
@@ -539,9 +552,9 @@ fun UnifiedGraphArea(
 
                                 drawRoundRect(
                                     color = color,
-                                    topLeft = Offset(left, top),
-                                    size = Size(barWidth, barHeightPx),
-                                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                                    topLeft = Offset(left + inset, top),
+                                    size = Size(drawWidth, barHeightPx),
+                                    cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx())
                                 )
                             }
                         }
@@ -607,7 +620,7 @@ fun UnifiedGraphArea(
                         }
                     }
 
-                    // 2. 選択された TimeScale に完全自動連動する目盛り
+                    // 2. 選択された TimeScale に完全自動連動し、キリの良い正時に揃えた目盛り
                     UnifiedTimeTicks(
                         uiState = uiState,
                         scrollOffset = scrollState.value.toFloat(),
@@ -620,7 +633,7 @@ fun UnifiedGraphArea(
 }
 
 /**
- * 画面横スライド・TimeScale (30分以下を含む全スケール) に直結・完全連動した動的目盛りラベル
+ * 画面横スライド・TimeScale に直結・完全連動し、キリの良い正時に整列した動的目盛りラベル
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -657,10 +670,10 @@ fun UnifiedTimeTicks(
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
 
-            // 1. 副目盛り（サブ目盛り線）の描画
+            // 1. 副目盛り（サブ目盛り線）の描画（キリの良い正時に整列）
             if (subIntervalMs != null) {
-                val firstSubTick = (visibleStartMs / subIntervalMs) * subIntervalMs
-                val lastSubTick = ((visibleEndMs / subIntervalMs) + 1) * subIntervalMs
+                val firstSubTick = alignToRoundTime(visibleStartMs, subIntervalMs)
+                val lastSubTick = alignToRoundTime(visibleEndMs, subIntervalMs) + subIntervalMs
                 var subTimeMs = firstSubTick
 
                 while (subTimeMs <= lastSubTick && subTimeMs <= maxReal + subIntervalMs) {
@@ -679,9 +692,9 @@ fun UnifiedTimeTicks(
                 }
             }
 
-            // 2. 主目盛り＆数値ラベルの描画
-            val firstTick = (visibleStartMs / intervalMs) * intervalMs
-            val lastTick = ((visibleEndMs / intervalMs) + 1) * intervalMs
+            // 2. 主目盛り＆数値ラベルの描画（キリの良い正時に整列）
+            val firstTick = alignToRoundTime(visibleStartMs, intervalMs)
+            val lastTick = alignToRoundTime(visibleEndMs, intervalMs) + intervalMs
 
             val timeSdf = when (timeScale) {
                 TimeScale.THREE_DAYS, TimeScale.ONE_DAY -> SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())

@@ -248,17 +248,18 @@ class MovieViewModel @Inject constructor(
             (!likedFilterOnly || item.isLiked)
         }
 
-        // 2. 1バーあたりの時間幅 (画面1幅にちょうど90本のバーが入るように設定)
-        val bucketMs = (timeScale.intervalMinutes * 60 * 1000f).toLong().coerceAtLeast(1000L)
-        val scaleWindowMs = (timeScale.totalSeconds * 1000f).toLong()
-        val spanMs = maxOf(totalRealDurationMs, scaleWindowMs)
+        // 2. 1画面幅(scaleWindowMs)をぴったり90分割するバケット幅(ms)の計算
+        val scaleWindowMs = (timeScale.totalSeconds * 1000f).toDouble().coerceAtLeast(1000.0)
+        val bucketMs = scaleWindowMs / 90.0
+        val spanMs = maxOf(totalRealDurationMs.toDouble(), scaleWindowMs)
 
-        val totalBarCount = maxOf(90, ((spanMs + bucketMs - 1) / bucketMs).toInt())
+        // 全時間軸(spanMs)における総バー数 (1画面でぴったり90分割)
+        val totalBarCount = (spanMs / bucketMs).toInt().coerceAtLeast(90)
         val counts = IntArray(totalBarCount)
 
         for (item in filtered) {
-            val diffMs = item.realTime - minRealTimeMs
-            if (diffMs >= 0L) {
+            val diffMs = (item.realTime - minRealTimeMs).toDouble()
+            if (diffMs >= 0.0) {
                 val index = (diffMs / bucketMs).toInt()
                 if (index in 0 until totalBarCount) {
                     counts[index]++
