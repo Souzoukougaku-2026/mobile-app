@@ -240,9 +240,7 @@ fun MovieScreen(
             // --- ヘッダーエリア (OSステータスバーとの重なりを防止) ---
             if (!isFullScreen) {
                 Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding(),
+                    modifier = Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 2.dp
                 ) {
