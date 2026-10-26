@@ -13,7 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -835,15 +836,15 @@ fun GraphControlArea(
                 }
             }
 
-            // ❤️ いいねトグルフィルターボタン
+            // 🐾 足跡（お気に入り）トグルフィルターボタン
             FilterChip(
                 selected = uiState.isLikedFilterOnly,
                 onClick = onLikedFilterToggled,
                 label = {
                     Icon(
-                        imageVector = Icons.Default.Favorite,
+                        imageVector = Icons.Default.Pets,
                         contentDescription = "Favorite Filter",
-                        tint = if (uiState.isLikedFilterOnly) Color(0xFFE53935) else Color.Gray,
+                        tint = if (uiState.isLikedFilterOnly) Color(0xFFFF9800) else Color.Gray,
                         modifier = Modifier.size(20.dp)
                     )
                 }

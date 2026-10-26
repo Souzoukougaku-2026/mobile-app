@@ -15,11 +15,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -149,16 +149,16 @@ fun BottomInfoArea(
                         )
                     }
 
-                    // ❤️ ハートボタン (いいね切替)
+                    // 🐾 足跡ボタン (お気に入り切替)
                     IconButton(
                         onClick = {
                             onKeyframeLikedStateChanged(currentKeyframe.id, !currentKeyframe.isLiked)
                         }
                     ) {
                         Icon(
-                            imageVector = if (currentKeyframe.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "いいね切替",
-                            tint = if (currentKeyframe.isLiked) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurfaceVariant
+                            imageVector = if (currentKeyframe.isLiked) Icons.Default.Pets else Icons.Outlined.Pets,
+                            contentDescription = "お気に入り切替",
+                            tint = if (currentKeyframe.isLiked) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
@@ -862,7 +862,7 @@ fun TinderActionButtons(
             )
         }
 
-        // ❤️ LIKE ボタン
+        // 🐾 足跡 (LIKE) ボタン
         IconButton(
             onClick = onLike,
             enabled = hasCards,
@@ -872,7 +872,7 @@ fun TinderActionButtons(
                 .border(1.5.dp, likeContent, CircleShape)
         ) {
             Icon(
-                imageVector = Icons.Default.Favorite,
+                imageVector = Icons.Default.Pets,
                 contentDescription = "Like",
                 tint = likeContent,
                 modifier = Modifier.size(26.dp)

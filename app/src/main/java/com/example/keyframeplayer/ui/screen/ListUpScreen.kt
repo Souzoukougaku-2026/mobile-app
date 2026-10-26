@@ -11,10 +11,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -472,9 +472,9 @@ fun MyTopBar(
                             onClick = { currentMenuPage = MenuPage.COLOR }
                         )
 
-                        // 4. ❤️ いいねのみ
+                        // 4. 🐾 足跡（お気に入り）のみ
                         DropdownMenuItem(
-                            text = { Text(if (isLikedOnlyFilter) "❤️ いいねのみ [ON]" else "🤍 いいねのみ [OFF]") },
+                            text = { Text(if (isLikedOnlyFilter) "🐾 お気に入り(足跡)のみ [ON]" else "🐾 お気に入り(足跡)のみ [OFF]") },
                             trailingIcon = {
                                 if (isLikedOnlyFilter) {
                                     Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -666,9 +666,9 @@ fun TopicCard(
                         .size(32.dp)
                 ) {
                     Icon(
-                        imageVector = if (topic.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        imageVector = if (topic.isLiked) Icons.Default.Pets else Icons.Outlined.Pets,
                         contentDescription = "Favorite",
-                        tint = if (topic.isLiked) Color.Red else Color.White,
+                        tint = if (topic.isLiked) Color(0xFFFF9800) else Color.White,
                         modifier = Modifier.size(18.dp)
                     )
                 }
