@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
     // ViewModelの取得（状態とロジックの保持）
     private val viewModel: VideoManagementViewModel by viewModels()
 
+
     // 1秒ごとに権限状態をチェックするバックグラウンド処理の設定
     private val mainHandler = Handler(Looper.getMainLooper())
     private val checkStatusRunnable = object : Runnable {
