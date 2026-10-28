@@ -51,17 +51,29 @@ class MLWorker(
         .setOngoing(true)
         .setProgress(100, 0, false)
 
+    private fun convertBbox(
+        bitmap: Bitmap,
+        bbox: FloatArray
+    ): IntArray {
+        val width: Int = bitmap.width
+        val height: Int = bitmap.height
+
+        return intArrayOf(
+            (width * bbox[0]).toInt(),
+            (height * bbox[1]).toInt(),
+            (width * bbox[2]).toInt(),
+            (height * bbox[3]).toInt()
+        )
+    }
+
     private fun detectColor(
         bitmap: Bitmap,
-        left: Int,
-        top: Int,
-        right: Int,
-        bottom: Int
+        bbox: IntArray
     ): ImageColor {
-        val safeLeft = left.coerceIn(0, bitmap.width)
-        val safeTop = top.coerceIn(0, bitmap.height)
-        val safeRight = right.coerceIn(0, bitmap.width)
-        val safeBottom = bottom.coerceIn(0, bitmap.height)
+        val safeLeft = bbox[0].coerceIn(0, bitmap.width)
+        val safeTop = bbox[1].coerceIn(0, bitmap.height)
+        val safeRight = bbox[2].coerceIn(0, bitmap.width)
+        val safeBottom = bbox[3].coerceIn(0, bitmap.height)
 
         require(safeRight > safeLeft && safeBottom > safeTop) {
             "検出範囲が画像の範囲外、または無効です"
@@ -78,7 +90,7 @@ class MLWorker(
         return try {
             cropped.detectDominantColor()
         } finally {
-            if (!cropped.isRecycled) cropped.recycle()
+            if (!bitmap.isRecycled) bitmap.recycle()
         }
     }
 
@@ -116,21 +128,17 @@ class MLWorker(
                         val detections = detector.runDetect(bitmap)
 
                         val cropImageEntities = detections.map { detection ->
+                            val bbox = convertBbox(bitmap, detection.bbox)
+
                             CropImageEntity(
                                 id = UUID.randomUUID(),
                                 className = detection.classname,
                                 score = detection.score.toDouble(),
-                                color = detectColor(
-                                    bitmap,
-                                    detection.bbox[0].toInt(),
-                                    detection.bbox[1].toInt(),
-                                    detection.bbox[2].toInt(),
-                                    detection.bbox[3].toInt()
-                                ).id,
-                                bboxLeft = detection.bbox[0].toInt(),
-                                bboxTop = detection.bbox[1].toInt(),
-                                bboxRight = detection.bbox[2].toInt(),
-                                bboxBottom = detection.bbox[3].toInt(),
+                                color = detectColor(bitmap, bbox).id,
+                                bboxLeft = bbox[0],
+                                bboxTop = bbox[1],
+                                bboxRight = bbox[2],
+                                bboxBottom = bbox[3],
                                 realTime = keyFrame.realTime,
                                 fileTime = keyFrame.fileTime,
                                 idKeyFrame = keyFrame.id,
