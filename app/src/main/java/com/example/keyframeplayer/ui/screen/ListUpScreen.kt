@@ -420,7 +420,7 @@ fun MyTopBar(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("🔀 ソート")
+                                    Text("ソート")
                                     Text(
                                         text = selectedSortOption.label,
                                         style = MaterialTheme.typography.bodySmall,
@@ -440,7 +440,7 @@ fun MyTopBar(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("🏷️ クラス絞り込み")
+                                    Text("クラス絞り込み")
                                     Text(
                                         text = selectedClassFilter?.toJapaneseClassName() ?: "すべて",
                                         style = MaterialTheme.typography.bodySmall,
@@ -460,7 +460,7 @@ fun MyTopBar(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("🎨 色絞り込み")
+                                    Text("色絞り込み")
                                     Text(
                                         text = selectedColorFilter?.displayName ?: "すべて",
                                         style = MaterialTheme.typography.bodySmall,
@@ -474,7 +474,7 @@ fun MyTopBar(
 
                         // 4. 🐾 足跡（お気に入り）のみ
                         DropdownMenuItem(
-                            text = { Text(if (isLikedOnlyFilter) "🐾 お気に入り(足跡)のみ [ON]" else "🐾 お気に入り(足跡)のみ [OFF]") },
+                            text = { Text(if (isLikedOnlyFilter) "お気に入り(足跡)のみ [ON]" else "お気に入り(足跡)のみ [OFF]") },
                             trailingIcon = {
                                 if (isLikedOnlyFilter) {
                                     Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -490,7 +490,7 @@ fun MyTopBar(
 
                         // 5. すべてリセット
                         DropdownMenuItem(
-                            text = { Text("🔄 条件をクリア (すべて表示)", color = MaterialTheme.colorScheme.error) },
+                            text = { Text("条件をクリア (すべて表示)", color = MaterialTheme.colorScheme.error) },
                             onClick = {
                                 onResetAllFilters()
                                 onExpandedChange(false)
@@ -574,7 +574,20 @@ fun MyTopBar(
                         )
                         availableColors.forEach { color ->
                             DropdownMenuItem(
-                                text = { Text(color.displayName) },
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Pets,
+                                            contentDescription = color.displayName,
+                                            tint = color.composeColor,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(color.displayName)
+                                    }
+                                },
                                 trailingIcon = {
                                     if (selectedColorFilter == color) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -693,12 +706,23 @@ fun TopicCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "(${topic.color.displayName})",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Pets,
+                            contentDescription = topic.color.displayName,
+                            tint = topic.color.composeColor,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = topic.color.displayName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(

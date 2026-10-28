@@ -122,7 +122,7 @@ fun BottomInfoArea(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "📸 検出オブジェクト (${currentIndex + 1} / $totalCount)",
+                    text = "検出オブジェクト (${currentIndex + 1} / $totalCount)",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary

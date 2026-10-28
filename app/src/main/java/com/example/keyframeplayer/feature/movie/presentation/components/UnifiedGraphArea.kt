@@ -1,6 +1,7 @@
 package com.example.keyframeplayer.feature.movie.presentation.components
 
 import android.util.Log
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -754,7 +755,9 @@ fun GraphControlArea(
     ) {
         // フィルター（クラス & 色 & いいね）
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -803,11 +806,22 @@ fun GraphControlArea(
                 onExpandedChange = { colorMenuExpanded = !colorMenuExpanded },
                 modifier = Modifier.weight(1f)
             ) {
+                val selectedColor = uiState.selectedColorFilter
                 OutlinedTextField(
-                    value = uiState.selectedColorFilter?.displayName ?: "すべて",
+                    value = selectedColor?.displayName ?: "すべて",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("色絞り込み") },
+                    leadingIcon = selectedColor?.let { color ->
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Pets,
+                                contentDescription = color.displayName,
+                                tint = color.composeColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = colorMenuExpanded) },
                     modifier = Modifier
                         .menuAnchor()
@@ -826,7 +840,20 @@ fun GraphControlArea(
                     )
                     uiState.availableColors.forEach { color ->
                         DropdownMenuItem(
-                            text = { Text(color.displayName) },
+                            text = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Pets,
+                                        contentDescription = color.displayName,
+                                        tint = color.composeColor,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(color.displayName)
+                                }
+                            },
                             onClick = {
                                 onColorFilterSelected(color)
                                 colorMenuExpanded = false
@@ -836,19 +863,45 @@ fun GraphControlArea(
                 }
             }
 
-            // 🐾 足跡（お気に入り）トグルフィルターボタン
-            FilterChip(
-                selected = uiState.isLikedFilterOnly,
+            // 🐾 足跡（お気に入り）トグルフィルターボタン (隣の OutlinedTextField と高さ・枠線を統一)
+            val isLikedSelected = uiState.isLikedFilterOnly
+            val borderColor = if (isLikedSelected) Color(0xFFFF9800) else MaterialTheme.colorScheme.outline
+            val containerColor = if (isLikedSelected) Color(0xFFFF9800).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
+
+            Surface(
                 onClick = onLikedFilterToggled,
-                label = {
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(64.dp),
+                shape = MaterialTheme.shapes.extraSmall,
+                color = containerColor,
+                border = BorderStroke(
+                    width = if (isLikedSelected) 2.dp else 1.dp,
+                    color = borderColor
+                )
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(vertical = 4.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Pets,
                         contentDescription = "Favorite Filter",
-                        tint = if (uiState.isLikedFilterOnly) Color(0xFFFF9800) else Color.Gray,
+                        tint = if (isLikedSelected) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "のみ",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (isLikedSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isLikedSelected) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-            )
+            }
         }
     }
 }
