@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
@@ -16,6 +17,7 @@ import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.data.database.dao.CropImageDao
 import com.example.keyframeplayer.core.data.database.dao.KeyFrameDao
 import com.example.keyframeplayer.core.data.database.entity.CropImageEntity
+import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.detector.ObjectDetector
 import com.example.keyframeplayer.detector.detectDominantColor
 import dagger.hilt.EntryPoint
@@ -49,6 +51,38 @@ class MLWorker(
         .setOngoing(true)
         .setProgress(100, 0, false)
 
+    private fun detectColor(
+        bitmap: Bitmap,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int
+    ): ImageColor {
+        val safeLeft = left.coerceIn(0, bitmap.width)
+        val safeTop = top.coerceIn(0, bitmap.height)
+        val safeRight = right.coerceIn(0, bitmap.width)
+        val safeBottom = bottom.coerceIn(0, bitmap.height)
+
+        require(safeRight > safeLeft && safeBottom > safeTop) {
+            "検出範囲が画像の範囲外、または無効です"
+        }
+
+        val cropped = Bitmap.createBitmap(
+            bitmap,
+            safeLeft,
+            safeTop,
+            safeRight - safeLeft,
+            safeBottom - safeTop
+        )
+
+        return try {
+            cropped.detectDominantColor()
+        } finally {
+            if (!cropped.isRecycled) cropped.recycle()
+        }
+    }
+
+
     override suspend fun doWork(): Result {
         try {
             setForeground(createForegroundInfo())
@@ -79,7 +113,6 @@ class MLWorker(
                 val bitmap = BitmapFactory.decodeFile(keyFrame.keyFramePath)
                 if (bitmap != null) {
                     try {
-                        val dominantColor = bitmap.detectDominantColor()
                         val detections = detector.runDetect(bitmap)
 
                         val cropImageEntities = detections.map { detection ->
@@ -87,7 +120,13 @@ class MLWorker(
                                 id = UUID.randomUUID(),
                                 className = detection.classname,
                                 score = detection.score.toDouble(),
-                                color = dominantColor.id,
+                                color = detectColor(
+                                    bitmap,
+                                    detection.bbox[0].toInt(),
+                                    detection.bbox[1].toInt(),
+                                    detection.bbox[2].toInt(),
+                                    detection.bbox[3].toInt()
+                                ).id,
                                 bboxLeft = detection.bbox[0].toInt(),
                                 bboxTop = detection.bbox[1].toInt(),
                                 bboxRight = detection.bbox[2].toInt(),
