@@ -260,13 +260,10 @@ fun ListUpScreen(
                         // 処理中 (特にキーフレーム抽出フェーズ) はまだ検出結果が無いだけなので、
                         // 「該当なし」ではなく処理中であることを表示する
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = processingProgressState.statusText.ifEmpty { "処理中..." },
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(64.dp)
                             )
+                            Spacer(modifier = Modifier.height(12.dp))
                         }
                     } else {
                         Text(
