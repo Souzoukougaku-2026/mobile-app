@@ -13,10 +13,9 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Size
+import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
@@ -527,7 +527,7 @@ fun MyTopBar(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Pets,
+                                            painter = painterResource(R.drawable.ic_footprint),
                                             contentDescription = color.displayName,
                                             tint = color.composeColor,
                                             modifier = Modifier.size(20.dp)
@@ -702,7 +702,7 @@ fun TopicCard(
                         .size(32.dp)
                 ) {
                     Icon(
-                        imageVector = if (topic.isLiked) Icons.Default.Pets else Icons.Outlined.Pets,
+                        painter = painterResource(if (topic.isLiked) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
                         contentDescription = "Favorite",
                         tint = if (topic.isLiked) Color(0xFFFF9800) else Color.White,
                         modifier = Modifier.size(18.dp)
@@ -734,7 +734,7 @@ fun TopicCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
-                        imageVector = Icons.Default.Pets,
+                        painter = painterResource(R.drawable.ic_footprint),
                         contentDescription = topic.color.displayName,
                         tint = topic.color.composeColor,
                         modifier = Modifier.size(13.dp)
