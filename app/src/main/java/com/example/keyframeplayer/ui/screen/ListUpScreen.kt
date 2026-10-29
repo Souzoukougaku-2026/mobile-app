@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Size
 import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
@@ -668,6 +669,8 @@ fun TopicCard(
     ) {
         ImageRequest.Builder(context)
             .data(topic.keyFramePath)
+            // bbox は元画像の絶対座標なので、縮小デコードせず元サイズで切り抜く
+            .size(Size.ORIGINAL)
             .transformations(
                 BboxCropTransformation(
                     bboxLeft = topic.bboxLeft,
@@ -688,6 +691,8 @@ fun TopicCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
+                    // Fit で生じる余白は黒で埋める
+                    .background(Color.Black)
             ) {
                 AsyncImage(
                     model = thumbnailRequest,
