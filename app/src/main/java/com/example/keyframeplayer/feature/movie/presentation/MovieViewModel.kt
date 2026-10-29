@@ -365,7 +365,10 @@ class MovieViewModel @Inject constructor(
         }
 
         val targetVideo = videos[index]
-        val posMs = (targetRealTimeMs - targetVideo.realStartTime).coerceIn(0L, targetVideo.durationMs)
+        // 動画の無いエリアが指定された場合は、最寄りの動画端に寄せた時刻を実効時刻とする。
+        // 再生位置 (posMs) と現在時刻 (currentRealTimeMs) が一致するよう、両方この時刻から求める
+        val effectiveRealTimeMs = targetRealTimeMs.coerceIn(targetVideo.realStartTime, targetVideo.realEndTime)
+        val posMs = (effectiveRealTimeMs - targetVideo.realStartTime).coerceIn(0L, targetVideo.durationMs)
         val overallMs = (offsets.getOrNull(index) ?: 0L) + posMs
         val overallSec = (overallMs / 1000f).coerceIn(0f, state.totalDurationSeconds)
 
@@ -374,7 +377,7 @@ class MovieViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 currentTime = overallSec,
-                currentRealTimeMs = targetRealTimeMs,
+                currentRealTimeMs = effectiveRealTimeMs,
                 seekTarget = SeekTarget(index, posMs)
             )
         }

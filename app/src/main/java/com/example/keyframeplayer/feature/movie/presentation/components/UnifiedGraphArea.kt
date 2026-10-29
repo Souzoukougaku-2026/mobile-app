@@ -269,8 +269,8 @@ fun UnifiedGraphArea(
                     modifier = Modifier.width(totalWidth)
                 ) {
                     val primaryColor = MaterialTheme.colorScheme.primary
-                    // 動画が存在しない背景部分: トーンを抑えたシックなベースカラー
-                    val noVideoBgColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    // 動画が存在しない背景部分: あからさまに黒寄りのグレーにして、動画のある領域と区別する
+                    val noVideoBgColor = Color.DarkGray.copy(alpha = 0.2f)
                     // 動画が存在する領域: 鮮やかで際立つ強調ハイライトカラー
                     val activeVideoBgColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
                     val activeBorderColor = primaryColor
@@ -625,6 +625,18 @@ fun UnifiedTimeTicks(
                 TimeScale.FIVE_MINUTES, TimeScale.ONE_MINUTE -> SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             }
 
+            // ラベル描画用の Paint は使い回す (従来はラベルごとに生成していた)
+            val labelPaint = android.graphics.Paint().apply {
+                color = tickTextColor
+                textSize = 10.dp.toPx()
+                isAntiAlias = true
+                isFakeBoldText = true
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+            val labelGapPx = 4.dp.toPx()
+            // 最後に描いたラベルの右端。次のラベルはこれより右に離れている場合だけ描く (間引き)
+            var lastLabelRight = Float.NEGATIVE_INFINITY
+
             var t = firstMajor
             while (t <= lastMajor && t <= maxReal + majorIntervalMs) {
                 if (t >= minReal) {
@@ -637,20 +649,20 @@ fun UnifiedTimeTicks(
                         strokeWidth = 1.5.dp.toPx()
                     )
 
+                    // 目盛り線はすべて描き、ラベルだけを実測幅ベースで間引く。
+                    // 総横幅が上限でクランプされる細かいスケール (1分など) でも
+                    // ラベル同士が重ならなくなる。
                     val label = timeSdf.format(Date(t))
-
-                    drawContext.canvas.nativeCanvas.drawText(
-                        label,
-                        x,
-                        size.height - 2.dp.toPx(),
-                        android.graphics.Paint().apply {
-                            color = tickTextColor
-                            textSize = 10.dp.toPx()
-                            isAntiAlias = true
-                            isFakeBoldText = true
-                            textAlign = android.graphics.Paint.Align.CENTER
-                        }
-                    )
+                    val labelHalfWidth = labelPaint.measureText(label) / 2f
+                    if (x - labelHalfWidth >= lastLabelRight + labelGapPx) {
+                        drawContext.canvas.nativeCanvas.drawText(
+                            label,
+                            x,
+                            size.height - 2.dp.toPx(),
+                            labelPaint
+                        )
+                        lastLabelRight = x + labelHalfWidth
+                    }
                 }
                 t += majorIntervalMs
             }
@@ -875,27 +887,6 @@ private fun DrawScope.drawVideoSegments(
                 color = backgroundColor,
                 topLeft = Offset(left, 0f),
                 size = Size(width, canvasHeight)
-            )
-
-            // 動画領域の上部インジケーターライン
-            drawRect(
-                color = topLineColor,
-                topLeft = Offset(left, 0f),
-                size = Size(width, 4.dp.toPx())
-            )
-
-            // 左右のクッキリした境界線
-            drawLine(
-                color = borderColor,
-                start = Offset(left, 0f),
-                end = Offset(left, canvasHeight),
-                strokeWidth = 2.5.dp.toPx()
-            )
-            drawLine(
-                color = borderColor,
-                start = Offset(right, 0f),
-                end = Offset(right, canvasHeight),
-                strokeWidth = 2.5.dp.toPx()
             )
         }
     }
