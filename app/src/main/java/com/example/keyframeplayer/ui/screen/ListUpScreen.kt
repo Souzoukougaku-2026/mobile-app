@@ -339,11 +339,20 @@ fun MyTopBar(
                 Icon(Icons.Default.FilterAlt, contentDescription = "フィルター")
             }
             // やり直しは専用ボタンとしてヘッダーの一番右に置く (確認ダイアログがあるため誤タップの心配はない)
-            IconButton(
+            // アイコンだけでは伝わりにくいため、テキスト付きの Filled ボタン (primary 色) にする
+            Button(
                 onClick = { showRedoConfirmDialog = true },
-                enabled = !isProcessing
+                enabled = !isProcessing,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.padding(start = 4.dp, end = 8.dp)
             ) {
-                Icon(Icons.Default.RestartAlt, contentDescription = "検出データを削除してやり直す")
+                Icon(
+                    Icons.Default.RestartAlt,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("やりなおす")
             }
 
             DropdownMenu(
