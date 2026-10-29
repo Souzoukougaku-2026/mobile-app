@@ -66,6 +66,9 @@ object VideoUtils {
         val retriever = MediaMetadataRetriever()
         val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS", Locale.getDefault())
 
+        // DocumentFile.listFiles() の順序は時系列とは限らないため、
+        // 算出した開始時刻 (startTimeMs) の昇順に並べ替えてから返す。
+        // 範囲選択 UI は「リストが時系列順である」前提でインデックス操作を行うため、ここで揃える。
         return mp4Files.map { file ->
             var durationMs = 0L
             try {
@@ -90,10 +93,12 @@ object VideoUtils {
                 durationText = durationText,
                 startTimeText = formatter.format(Date(startTimeMs)),
                 endTimeText = formatter.format(Date(endTimeMs))
-            )
-        }.also {
-            retriever.release() // 最後に必ずリソースを解放
-        }
+            ) to startTimeMs
+        }.sortedBy { it.second }
+            .map { it.first }
+            .also {
+                retriever.release() // 最後に必ずリソースを解放
+            }
     }
 
     /**
