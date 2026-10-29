@@ -267,9 +267,13 @@ fun PaginationBar(
         tonalElevation = 3.dp,
         modifier = modifier.fillMaxWidth()
     ) {
+        // targetSdk 35 では edge-to-edge が強制され、バーが画面最下部 (ナビゲーションバー
+        // 領域) に張り付いてしまうため、端末のナビゲーションバーの高さ分だけ内側を
+        // 持ち上げる。Surface の背景は画面端まで届かせ、中身だけを持ち上げるのが定石
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
