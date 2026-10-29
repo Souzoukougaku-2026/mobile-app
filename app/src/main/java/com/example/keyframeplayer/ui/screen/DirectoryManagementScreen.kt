@@ -1,6 +1,5 @@
 package com.example.keyframeplayer.ui.screen
 
-import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -15,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -34,7 +32,6 @@ fun DirectoryManagementScreen(
     onChooseClick: () -> Unit,
     onProcessingFinished: () -> Unit
 ) {
-    val context = LocalContext.current
     val keyFrameViewModel: ImageRecognitionViewModel = hiltViewModel()
 
     // 処理開始ボタンの二重押し防止 (開始処理は非同期にフラグが立つため、ローカルでも抑止する)
@@ -52,42 +49,61 @@ fun DirectoryManagementScreen(
     var startMenuExpanded by remember { mutableStateOf(false) }
     var endMenuExpanded by remember { mutableStateOf(false) }
 
+    // 範囲未選択で「決定」を押したときの、ボトムシート内のエラー表示
+    var rangeSelectionError by remember { mutableStateOf(false) }
+
     LaunchedEffect(isAccessible, currentUri) {
         selectedStartVideo = null
         selectedEndVideo = null
+        rangeSelectionError = false
+    }
+
+    // 開始・終了の両方が揃ったらエラー表示は不要になる
+    LaunchedEffect(selectedStartVideo, selectedEndVideo) {
+        if (selectedStartVideo != null && selectedEndVideo != null) {
+            rangeSelectionError = false
+        }
     }
 
     val isFabEnabled = isAccessible && !isLoading && videoInfos.isNotEmpty()
     val scope = rememberCoroutineScope()
 
+    // 通知は Toast ではなく Snackbar で出す。Toast は Android 12 以降、アプリの
+    // アイコンが自動で付いてしまい外観を制御できないため (カスタム表示も不可)
+    val snackbarHostState = remember { SnackbarHostState() }
+
     var hasStartedLoading by remember { mutableStateOf(false) }
-    var toastShownForCurrentLoad by remember { mutableStateOf(false) }
+    var snackbarShownForCurrentLoad by remember { mutableStateOf(false) }
 
     LaunchedEffect(isLoading, isAccessible, videoInfos.isEmpty()) {
         if (isLoading) {
             hasStartedLoading = true
-            toastShownForCurrentLoad = false
+            snackbarShownForCurrentLoad = false
         } else if (
             hasStartedLoading &&
-            !toastShownForCurrentLoad &&
+            !snackbarShownForCurrentLoad &&
             isAccessible &&
             videoInfos.isEmpty()
         ) {
-            Toast.makeText(
-                context,
-                "動画が見つかりませんでした",
-                Toast.LENGTH_SHORT
-            ).show()
+            scope.launch {
+                snackbarHostState.showSnackbar("動画が見つかりませんでした")
+            }
 
-            toastShownForCurrentLoad = true
+            snackbarShownForCurrentLoad = true
         }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(
                 // 【修正2】 無効時は onClick を null にするか、処理をスキップする
-                onClick = { if (isFabEnabled) showBottomSheet = true },
+                onClick = {
+                    if (isFabEnabled) {
+                        rangeSelectionError = false // 開くたびに前回のエラー表示は消す
+                        showBottomSheet = true
+                    }
+                },
                 // 【修正3】 有効・無効に合わせて色を切り替える
                 containerColor = if (isFabEnabled) {
                     MaterialTheme.colorScheme.primary
@@ -311,6 +327,19 @@ fun DirectoryManagementScreen(
                             }
                         }
                     }
+                    // 範囲未選択で「決定」を押した場合は、シート内にエラーを出す
+                    // (Scaffold の Snackbar はモーダルシートの背後に隠れて見えないため)
+                    if (rangeSelectionError) {
+                        Text(
+                            text = "動画範囲を選択してください",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 32.dp, vertical = 4.dp)
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(32.dp)) // 必要に応じて隙間を調整
 
                     Row(
@@ -357,7 +386,7 @@ fun DirectoryManagementScreen(
                                         onProcessingFinished()
                                     }
                                 } else {
-                                    Toast.makeText(context, "動画範囲を選択してください", Toast.LENGTH_SHORT).show()
+                                    rangeSelectionError = true
                                 }
                             },
                         ) {
