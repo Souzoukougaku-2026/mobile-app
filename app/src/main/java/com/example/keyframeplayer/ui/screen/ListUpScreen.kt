@@ -11,7 +11,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material3.*
@@ -335,7 +336,14 @@ fun MyTopBar(
         title = { Text("検出画像一覧") },
         actions = {
             IconButton(onClick = { onExpandedChange(true) }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "メニュー")
+                Icon(Icons.Default.FilterAlt, contentDescription = "フィルター")
+            }
+            // やり直しは専用ボタンとしてヘッダーの一番右に置く (確認ダイアログがあるため誤タップの心配はない)
+            IconButton(
+                onClick = { showRedoConfirmDialog = true },
+                enabled = !isProcessing
+            ) {
+                Icon(Icons.Default.RestartAlt, contentDescription = "検出データを削除してやり直す")
             }
 
             DropdownMenu(
@@ -433,18 +441,6 @@ fun MyTopBar(
                             onClick = {
                                 onResetAllFilters()
                                 onExpandedChange(false)
-                            }
-                        )
-
-                        HorizontalDivider()
-
-                        // 6. 検出データを削除して最初からやり直す (危険な操作なので確認ダイアログを挟む)
-                        DropdownMenuItem(
-                            text = { Text("検出データを削除してやり直す", color = MaterialTheme.colorScheme.error) },
-                            enabled = !isProcessing,
-                            onClick = {
-                                onExpandedChange(false)
-                                showRedoConfirmDialog = true
                             }
                         )
                     }
