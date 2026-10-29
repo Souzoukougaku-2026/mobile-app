@@ -14,9 +14,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -32,6 +32,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.data.database.entity.VideoEntity
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.core.domain.model.toJapaneseClassName
@@ -754,7 +755,7 @@ fun GraphControlArea(
                     leadingIcon = selectedColor?.let { color ->
                         {
                             Icon(
-                                imageVector = Icons.Default.Pets,
+                                painter = painterResource(R.drawable.ic_footprint),
                                 contentDescription = color.displayName,
                                 tint = color.composeColor,
                                 modifier = Modifier.size(20.dp)
@@ -785,7 +786,7 @@ fun GraphControlArea(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Pets,
+                                        painter = painterResource(R.drawable.ic_footprint),
                                         contentDescription = color.displayName,
                                         tint = color.composeColor,
                                         modifier = Modifier.size(20.dp)
@@ -827,7 +828,7 @@ fun GraphControlArea(
                         .padding(vertical = 4.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Pets,
+                        painter = painterResource(if (isLikedSelected) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
                         contentDescription = "Favorite Filter",
                         tint = if (isLikedSelected) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)

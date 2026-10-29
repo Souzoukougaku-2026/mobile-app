@@ -16,12 +16,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Flip
-import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -33,6 +32,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.core.domain.model.japaneseClassName
@@ -156,7 +156,7 @@ fun BottomInfoArea(
                         }
                     ) {
                         Icon(
-                            imageVector = if (currentKeyframe.isLiked) Icons.Default.Pets else Icons.Outlined.Pets,
+                            painter = painterResource(if (currentKeyframe.isLiked) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
                             contentDescription = "お気に入り切替",
                             tint = if (currentKeyframe.isLiked) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -872,7 +872,7 @@ fun TinderActionButtons(
                 .border(1.5.dp, likeContent, CircleShape)
         ) {
             Icon(
-                imageVector = Icons.Default.Pets,
+                painter = painterResource(R.drawable.ic_footprint_filled),
                 contentDescription = "Like",
                 tint = likeContent,
                 modifier = Modifier.size(26.dp)

@@ -273,7 +273,7 @@ class ProcessingProgressRepository @Inject constructor(
                             savedFrames.add(timeUs to path)
                         }
 
-                        val msg = "KeyFrame抽出: 動画 $videoNum/$videoTotal 本目\n$currentFrame / $totalFrames 枚"
+                        val msg = "画像を抽出中: 動画 $videoNum/$videoTotal 本目\n$currentFrame / $totalFrames 枚"
                         _progressState.update {
                             it.copy(
                                 progress = (0.2f * index.toFloat() / videoTotal.coerceAtLeast(1)) + (0.2f * currentFrame.toFloat() / totalFrames.coerceAtLeast(1) / videoTotal.coerceAtLeast(1)),

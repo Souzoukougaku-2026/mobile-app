@@ -11,12 +11,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Pets
+import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,9 +24,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Size
+import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
@@ -80,8 +81,6 @@ fun ListUpScreen(
     // -------------------------------------------------------------
     // 【入力および画面の状態管理（State）】
     // -------------------------------------------------------------
-    var searchText by remember { mutableStateOf("") }
-    var searchVisible by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var currentPage by remember { mutableIntStateOf(0) }
 
@@ -100,29 +99,9 @@ fun ListUpScreen(
         items.map { it.color }.distinct().sortedBy { it.name }
     }
 
-    fun applySearch(text: String, currentItems: List<CropImage>): List<CropImage> {
-        if (text.isBlank()) return currentItems
-        return currentItems
-            .filter {
-                it.className.contains(text, ignoreCase = true) ||
-                it.japaneseClassName.contains(text, ignoreCase = true) ||
-                it.color.displayName.contains(text, ignoreCase = true) ||
-                it.color.name.contains(text, ignoreCase = true)
-            }
-            .sortedByDescending {
-                when {
-                    it.japaneseClassName.equals(text, true) || it.className.equals(text, true) -> 100
-                    it.japaneseClassName.startsWith(text, true) || it.className.startsWith(text, true) -> 80
-                    it.japaneseClassName.contains(text, true) || it.className.contains(text, true) -> 60
-                    else -> 0
-                }
-            }
-    }
-
     // フィルター & ソートが適用された結果のリスト
     val filteredAndSortedItems = remember(
         items,
-        searchText,
         selectedSortOption,
         selectedClassFilter,
         selectedColorFilter,
@@ -130,27 +109,22 @@ fun ListUpScreen(
     ) {
         var list = items
 
-        // 1. 検索テキストフィルタ
-        if (searchText.isNotBlank()) {
-            list = applySearch(searchText, list)
-        }
-
-        // 2. いいね絞り込み
+        // 1. いいね絞り込み
         if (isLikedOnlyFilter) {
             list = list.filter { it.isLiked }
         }
 
-        // 3. クラス絞り込み
+        // 2. クラス絞り込み
         if (selectedClassFilter != null) {
             list = list.filter { it.className.equals(selectedClassFilter, ignoreCase = true) }
         }
 
-        // 4. 色絞り込み
+        // 3. 色絞り込み
         if (selectedColorFilter != null) {
             list = list.filter { it.color == selectedColorFilter }
         }
 
-        // 5. ソート処理
+        // 4. ソート処理
         when (selectedSortOption) {
             ListSortOption.DATE_DESC -> list.sortedByDescending { if (it.realTime > 0L) it.realTime else it.fileTime.toLong() }
             ListSortOption.DATE_ASC -> list.sortedBy { if (it.realTime > 0L) it.realTime else it.fileTime.toLong() }
@@ -179,7 +153,6 @@ fun ListUpScreen(
                 MyTopBar(
                     expanded = menuExpanded,
                     onExpandedChange = { menuExpanded = it },
-                    onSearchClick = { searchVisible = !searchVisible },
                     onRedoDetection = onRedoDetection,
                     isProcessing = processingProgressState.isProcessing,
                     selectedSortOption = selectedSortOption,
@@ -209,40 +182,28 @@ fun ListUpScreen(
                         selectedClassFilter = null
                         selectedColorFilter = null
                         isLikedOnlyFilter = false
-                        searchText = ""
                         currentPage = 0
                     }
                 )
 
-                // 検索入力フィールド
-                if (searchVisible) {
-                    SearchInputField(
-                        value = searchText,
-                        onValueChange = {
-                            searchText = it
-                            currentPage = 0
-                        }
-                    )
-                }
-            }
-        },
-        bottomBar = {
-            Column {
+                // 処理中のみ、トップバーの下に2段目のバーとして進捗を表示する
                 ProcessingProgressBar(
                     isProcessing = processingProgressState.isProcessing,
                     progress = processingProgressState.progress,
                     statusText = processingProgressState.statusText
                 )
 
-                if (filteredAndSortedItems.isNotEmpty()) {
-                    PaginationBar(
-                        currentPage = currentPage,
-                        totalPages = totalPages,
-                        totalItems = filteredAndSortedItems.size,
-                        onPrevClick = { if (currentPage > 0) currentPage-- },
-                        onNextClick = { if (currentPage < totalPages - 1) currentPage++ }
-                    )
-                }
+            }
+        },
+        bottomBar = {
+            if (filteredAndSortedItems.isNotEmpty()) {
+                PaginationBar(
+                    currentPage = currentPage,
+                    totalPages = totalPages,
+                    totalItems = filteredAndSortedItems.size,
+                    onPrevClick = { if (currentPage > 0) currentPage-- },
+                    onNextClick = { if (currentPage < totalPages - 1) currentPage++ }
+                )
             }
         }
     ) { padding ->
@@ -257,11 +218,22 @@ fun ListUpScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (searchText.isNotBlank()) "検索結果が見つかりません" else "該当する検出画像がありません",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (processingProgressState.isProcessing) {
+                        // 処理中 (特にキーフレーム抽出フェーズ) はまだ検出結果が無いだけなので、
+                        // 「該当なし」ではなく処理中であることを表示する
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    } else {
+                        Text(
+                            text = "該当する検出画像がありません",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             } else {
                 TopicGrid(
@@ -330,32 +302,6 @@ fun PaginationBar(
 }
 
 /**
- * 検索入力用のコンポーネント
- */
-@Composable
-fun SearchInputField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        placeholder = { Text("クラス名検索") },
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = "検索"
-            )
-        },
-        singleLine = true
-    )
-}
-
-/**
  * トップバー（ヘッダー・三点リーダーメニュー）
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -363,7 +309,6 @@ fun SearchInputField(
 fun MyTopBar(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
-    onSearchClick: () -> Unit,
     onRedoDetection: () -> Unit,
     isProcessing: Boolean = false,
     selectedSortOption: ListSortOption,
@@ -389,13 +334,26 @@ fun MyTopBar(
     }
 
     TopAppBar(
-        title = { Text("検出画像一覧") },
+        title = { Text("探し物 一覧") },
         actions = {
-            IconButton(onClick = { onSearchClick() }) {
-                Icon(Icons.Default.Search, contentDescription = "検索")
-            }
             IconButton(onClick = { onExpandedChange(true) }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "メニュー")
+                Icon(Icons.Default.FilterAlt, contentDescription = "並べ替えとフィルター")
+            }
+            // やり直しは専用ボタンとしてヘッダーの一番右に置く (確認ダイアログがあるため誤タップの心配はない)
+            // アイコンだけでは伝わりにくいため、テキスト付きの Filled ボタン (primary 色) にする
+            Button(
+                onClick = { showRedoConfirmDialog = true },
+                enabled = !isProcessing,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.padding(start = 4.dp, end = 8.dp)
+            ) {
+                Icon(
+                    Icons.Default.RestartAlt,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("やりなおす")
             }
 
             DropdownMenu(
@@ -405,7 +363,7 @@ fun MyTopBar(
                 when (currentMenuPage) {
                     MenuPage.MAIN -> {
                         Text(
-                            text = "ソート・フィルター",
+                            text = "並び替え・フィルター",
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
@@ -419,7 +377,7 @@ fun MyTopBar(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("ソート")
+                                    Text("並び替え")
                                     Text(
                                         text = selectedSortOption.label,
                                         style = MaterialTheme.typography.bodySmall,
@@ -473,7 +431,20 @@ fun MyTopBar(
 
                         // 4. 🐾 足跡（お気に入り）のみ
                         DropdownMenuItem(
-                            text = { Text(if (isLikedOnlyFilter) "お気に入り(足跡)のみ [ON]" else "お気に入り(足跡)のみ [OFF]") },
+                            text = {
+                                Row (
+                                    verticalAlignment = Alignment.CenterVertically
+                                ){
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_footprint_filled),
+                                        contentDescription = "足跡",
+                                        tint = Color(0xFFFF9800),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("つけたモノだけ")
+                                }
+                            },
                             trailingIcon = {
                                 if (isLikedOnlyFilter) {
                                     Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -481,7 +452,6 @@ fun MyTopBar(
                             },
                             onClick = {
                                 onLikedFilterToggled()
-                                onExpandedChange(false)
                             }
                         )
 
@@ -492,19 +462,6 @@ fun MyTopBar(
                             text = { Text("条件をクリア (すべて表示)", color = MaterialTheme.colorScheme.error) },
                             onClick = {
                                 onResetAllFilters()
-                                onExpandedChange(false)
-                            }
-                        )
-
-                        HorizontalDivider()
-
-                        // 6. 検出データを削除して最初からやり直す (危険な操作なので確認ダイアログを挟む)
-                        DropdownMenuItem(
-                            text = { Text("検出データを削除してやり直す", color = MaterialTheme.colorScheme.error) },
-                            enabled = !isProcessing,
-                            onClick = {
-                                onExpandedChange(false)
-                                showRedoConfirmDialog = true
                             }
                         )
                     }
@@ -525,7 +482,7 @@ fun MyTopBar(
                                 },
                                 onClick = {
                                     onSortOptionSelected(option)
-                                    onExpandedChange(false)
+                                    currentMenuPage = MenuPage.MAIN
                                 }
                             )
                         }
@@ -546,7 +503,7 @@ fun MyTopBar(
                             },
                             onClick = {
                                 onClassFilterSelected(null)
-                                onExpandedChange(false)
+                                currentMenuPage = MenuPage.MAIN
                             }
                         )
                         availableClasses.forEach { className ->
@@ -559,7 +516,7 @@ fun MyTopBar(
                                 },
                                 onClick = {
                                     onClassFilterSelected(className)
-                                    onExpandedChange(false)
+                                    currentMenuPage = MenuPage.MAIN
                                 }
                             )
                         }
@@ -580,7 +537,7 @@ fun MyTopBar(
                             },
                             onClick = {
                                 onColorFilterSelected(null)
-                                onExpandedChange(false)
+                                currentMenuPage = MenuPage.MAIN
                             }
                         )
                         availableColors.forEach { color ->
@@ -591,7 +548,7 @@ fun MyTopBar(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Pets,
+                                            painter = painterResource(R.drawable.ic_footprint),
                                             contentDescription = color.displayName,
                                             tint = color.composeColor,
                                             modifier = Modifier.size(20.dp)
@@ -606,7 +563,7 @@ fun MyTopBar(
                                 },
                                 onClick = {
                                     onColorFilterSelected(color)
-                                    onExpandedChange(false)
+                                    currentMenuPage = MenuPage.MAIN
                                 }
                             )
                         }
@@ -620,12 +577,10 @@ fun MyTopBar(
     if (showRedoConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showRedoConfirmDialog = false },
-            title = { Text("検出データをすべて削除しますか？") },
+            title = { Text("やり直しますか？") },
             text = {
                 Text(
-                    "保存されている検出結果とキーフレーム画像はすべて削除され、元に戻すことはできません。\n" +
-                        "動画ファイル自体は削除されません。\n" +
-                        "削除後は、動画選択の画面からやり直しになります。"
+                    "削除してやり直すボタンを押すと、保存されている見つかった探し物の結果を削除して、最初の画面からやり直すことになります。\n" + "動画ファイル自体は削除されません。\n"
                 )
             },
             confirmButton = {
@@ -761,30 +716,25 @@ fun TopicCard(
                     onClick = { onToggleLiked(topic.id, !topic.isLiked) },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(4.dp)
+                        .padding(8.dp)
                         .background(Color.Black.copy(alpha = 0.4f), shape = CircleShape)
                         .size(32.dp)
                 ) {
                     Icon(
-                        imageVector = if (topic.isLiked) Icons.Default.Pets else Icons.Outlined.Pets,
+                        painter = painterResource(if (topic.isLiked) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
                         contentDescription = "Favorite",
                         tint = if (topic.isLiked) Color(0xFFFF9800) else Color.White,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
 
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
-                Row(
-                    modifier = Modifier.weight(1f, fill = false),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = topic.japaneseClassName,
                         style = MaterialTheme.typography.bodyMedium,
@@ -792,32 +742,28 @@ fun TopicCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        painter = painterResource(R.drawable.ic_footprint_filled),
+                        contentDescription = topic.color.displayName,
+                        tint = topic.color.composeColor,
+                        modifier = Modifier
+                            .size(16.dp)
+                    )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Pets,
-                            contentDescription = topic.color.displayName,
-                            tint = topic.color.composeColor,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Text(
-                            text = topic.color.displayName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
-                        )
-                    }
+                    Text(
+                        text = topic.color.displayName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = formattedDate,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    maxLines = 1
                 )
             }
         }
