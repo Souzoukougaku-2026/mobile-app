@@ -270,7 +270,7 @@ fun UnifiedGraphArea(
                 ) {
                     val primaryColor = MaterialTheme.colorScheme.primary
                     // 動画が存在しない背景部分: あからさまに黒寄りのグレーにして、動画のある領域と区別する
-                    val noVideoBgColor = Color.DarkGray
+                    val noVideoBgColor = Color.DarkGray.copy(alpha = 0.2f)
                     // 動画が存在する領域: 鮮やかで際立つ強調ハイライトカラー
                     val activeVideoBgColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
                     val activeBorderColor = primaryColor
