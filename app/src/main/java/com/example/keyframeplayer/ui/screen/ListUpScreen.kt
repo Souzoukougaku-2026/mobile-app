@@ -72,7 +72,7 @@ fun ListUpScreen(
     onSortByDate: (Boolean) -> Unit = {},
     onToggleLiked: (UUID, Boolean) -> Unit = { _, _ -> },
     onNavigateToDetail: (CropImage) -> Unit,
-    onNavigateToDirectory: () -> Unit = {},
+    onRedoDetection: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val itemsPerPage = 10
@@ -180,7 +180,8 @@ fun ListUpScreen(
                     expanded = menuExpanded,
                     onExpandedChange = { menuExpanded = it },
                     onSearchClick = { searchVisible = !searchVisible },
-                    onNavigateToDirectory = onNavigateToDirectory,
+                    onRedoDetection = onRedoDetection,
+                    isProcessing = processingProgressState.isProcessing,
                     selectedSortOption = selectedSortOption,
                     onSortOptionSelected = {
                         selectedSortOption = it
@@ -363,7 +364,8 @@ fun MyTopBar(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onSearchClick: () -> Unit,
-    onNavigateToDirectory: () -> Unit,
+    onRedoDetection: () -> Unit,
+    isProcessing: Boolean = false,
     selectedSortOption: ListSortOption,
     onSortOptionSelected: (ListSortOption) -> Unit,
     selectedClassFilter: String?,
@@ -377,6 +379,7 @@ fun MyTopBar(
     onResetAllFilters: () -> Unit
 ) {
     var currentMenuPage by remember { mutableStateOf(MenuPage.MAIN) }
+    var showRedoConfirmDialog by remember { mutableStateOf(false) }
 
     // メニューが閉じられたらメインページに戻す
     LaunchedEffect(expanded) {
@@ -387,14 +390,6 @@ fun MyTopBar(
 
     TopAppBar(
         title = { Text("検出画像一覧") },
-        navigationIcon = {
-            IconButton(onClick = onNavigateToDirectory) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "動画選択画面へ戻る"
-                )
-            }
-        },
         actions = {
             IconButton(onClick = { onSearchClick() }) {
                 Icon(Icons.Default.Search, contentDescription = "検索")
@@ -498,6 +493,18 @@ fun MyTopBar(
                             onClick = {
                                 onResetAllFilters()
                                 onExpandedChange(false)
+                            }
+                        )
+
+                        HorizontalDivider()
+
+                        // 6. 検出データを削除して最初からやり直す (危険な操作なので確認ダイアログを挟む)
+                        DropdownMenuItem(
+                            text = { Text("検出データを削除してやり直す", color = MaterialTheme.colorScheme.error) },
+                            enabled = !isProcessing,
+                            onClick = {
+                                onExpandedChange(false)
+                                showRedoConfirmDialog = true
                             }
                         )
                     }
@@ -608,6 +615,36 @@ fun MyTopBar(
             }
         }
     )
+
+    // 「やり直し」の確認ダイアログ (削除は元に戻せないため、危険性を明示する)
+    if (showRedoConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showRedoConfirmDialog = false },
+            title = { Text("検出データをすべて削除しますか？") },
+            text = {
+                Text(
+                    "保存されている検出結果とキーフレーム画像はすべて削除され、元に戻すことはできません。\n" +
+                        "動画ファイル自体は削除されません。\n" +
+                        "削除後は、動画選択の画面からやり直しになります。"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRedoConfirmDialog = false
+                        onRedoDetection()
+                    }
+                ) {
+                    Text("削除してやり直す", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRedoConfirmDialog = false }) {
+                    Text("キャンセル")
+                }
+            }
+        )
+    }
 }
 
 /**

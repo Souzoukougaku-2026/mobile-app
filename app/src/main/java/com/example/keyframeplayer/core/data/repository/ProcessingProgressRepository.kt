@@ -75,6 +75,26 @@ class ProcessingProgressRepository @Inject constructor(
         }
     }
 
+    /**
+     * 保存済みの検出データ (DB 3テーブルとキーフレーム画像ファイル) をすべて削除する。
+     * 処理の新規開始時と、リスト画面からの「やり直し」で共用する。
+     * 元の動画ファイル自体は削除しない。
+     */
+    suspend fun clearAllPersistedData() {
+        cropImageDao.clearCropImages()
+        keyFrameDao.clearKeyFrames()
+        videoDao.clearVideos()
+
+        val imageDir = File(context.filesDir, "images")
+        if (imageDir.exists() && imageDir.isDirectory) {
+            imageDir.listFiles()?.forEach { file ->
+                if (file.isFile) {
+                    file.delete()
+                }
+            }
+        }
+    }
+
     private fun checkAndRestoreProcessingState() {
         repositoryScope.launch {
             try {
@@ -196,18 +216,7 @@ class ProcessingProgressRepository @Inject constructor(
 
             try {
                 // 古いDBデータおよび画像を全クリアしてリフレッシュ
-                cropImageDao.clearCropImages()
-                keyFrameDao.clearKeyFrames()
-                videoDao.clearVideos()
-
-                val imageDir = File(context.filesDir, "images")
-                if (imageDir.exists() && imageDir.isDirectory) {
-                    imageDir.listFiles()?.forEach { file ->
-                        if (file.isFile) {
-                            file.delete()
-                        }
-                    }
-                }
+                clearAllPersistedData()
 
                 val dateFormatWithMs = SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS", Locale.getDefault())
                 val dateFormatSec = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
