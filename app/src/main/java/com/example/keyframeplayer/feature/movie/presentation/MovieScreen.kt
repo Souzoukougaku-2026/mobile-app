@@ -150,7 +150,8 @@ fun MovieScreen(
 
     // シーク操作ハンドラ: 動画が無いエリアで止まった場合に、移動方向（右:次の先頭 / 左:前の末尾）に応じてシークし、Snackbarを表示
     val handleProgressTapped: (Float) -> Unit = { overallProgress ->
-        val (minRealTimeMs, spanMs) = uiState.getAlignedBounds()
+        val minRealTimeMs = uiState.minRealTimeMs
+        val spanMs = maxOf(uiState.totalRealDurationMs, uiState.selectedTimeScale.windowMs)
         val targetRealTimeMs = minRealTimeMs + (overallProgress * spanMs).toLong()
 
         val isInVideoRange = uiState.videos.any { video ->
