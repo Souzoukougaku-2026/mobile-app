@@ -14,7 +14,6 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SelectDirectoryScreen(
     currentUri: String,
-    isAccessible: Boolean,
     isLoading: Boolean,
     onChooseClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -29,20 +28,24 @@ fun SelectDirectoryScreen(
         // 画面の一番上から少し下げるための余白
         Spacer(modifier = Modifier.height(64.dp))
 
-        // 1. 上部のタイトルと状態
+        // 1. 上部のタイトル (固定テキスト)
         Text(
-            text = if (isAccessible) {
-                "ウェアラブルカメラが\n接続中"
-            } else {
-                "ウェアラブルカメラが\n接続されていません"
-            },
+            text = "フォルダを選択",
             style = MaterialTheme.typography.titleLarge,
             textAlign = TextAlign.Center
         )
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // 2. 選択されたディレクトリのパス表示
+        // 2. 選択されたフォルダのパス表示
+        // どのフォルダを選べばいいかの案内を、パスの上に表示する
+        Text(
+            text = "映像ファイル(mp4)が入ったフォルダの中身を表示して、そのフォルダを選択してください",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(24.dp))
         Text(
             text = "選択されたパス:",
             style = MaterialTheme.typography.bodyMedium
@@ -61,7 +64,7 @@ fun SelectDirectoryScreen(
             onClick = onChooseClick,
             enabled = !isLoading // 解析中は連打できないようボタンを制限
         ) {
-            Text("ディレクトリを選択する")
+            Text("フォルダを選択")
         }
 
         // 💡 4. ボタンの下にプログレスバー専用の「固定スペース」を確保

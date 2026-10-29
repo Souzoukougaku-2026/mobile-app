@@ -120,7 +120,6 @@ fun DirectoryManagementScreen(
     ) { innerPadding ->
         SelectDirectoryScreen(
             currentUri = currentUri,
-            isAccessible = isAccessible,
             isLoading = isLoading,
             onChooseClick = onChooseClick,
             modifier = Modifier.padding(innerPadding)
