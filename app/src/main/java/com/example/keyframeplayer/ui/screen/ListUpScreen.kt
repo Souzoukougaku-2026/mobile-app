@@ -214,6 +214,13 @@ fun ListUpScreen(
                     }
                 )
 
+                // 処理中のみ、トップバーの下に2段目のバーとして進捗を表示する
+                ProcessingProgressBar(
+                    isProcessing = processingProgressState.isProcessing,
+                    progress = processingProgressState.progress,
+                    statusText = processingProgressState.statusText
+                )
+
                 // 検索入力フィールド
                 if (searchVisible) {
                     SearchInputField(
@@ -227,22 +234,14 @@ fun ListUpScreen(
             }
         },
         bottomBar = {
-            Column {
-                ProcessingProgressBar(
-                    isProcessing = processingProgressState.isProcessing,
-                    progress = processingProgressState.progress,
-                    statusText = processingProgressState.statusText
+            if (filteredAndSortedItems.isNotEmpty()) {
+                PaginationBar(
+                    currentPage = currentPage,
+                    totalPages = totalPages,
+                    totalItems = filteredAndSortedItems.size,
+                    onPrevClick = { if (currentPage > 0) currentPage-- },
+                    onNextClick = { if (currentPage < totalPages - 1) currentPage++ }
                 )
-
-                if (filteredAndSortedItems.isNotEmpty()) {
-                    PaginationBar(
-                        currentPage = currentPage,
-                        totalPages = totalPages,
-                        totalItems = filteredAndSortedItems.size,
-                        onPrevClick = { if (currentPage > 0) currentPage-- },
-                        onNextClick = { if (currentPage < totalPages - 1) currentPage++ }
-                    )
-                }
             }
         }
     ) { padding ->
@@ -257,11 +256,25 @@ fun ListUpScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (searchText.isNotBlank()) "検索結果が見つかりません" else "該当する検出画像がありません",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (processingProgressState.isProcessing && searchText.isBlank()) {
+                        // 処理中 (特にキーフレーム抽出フェーズ) はまだ検出結果が無いだけなので、
+                        // 「該当なし」ではなく処理中であることを表示する
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = processingProgressState.statusText.ifEmpty { "処理中..." },
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = if (searchText.isNotBlank()) "検索結果が見つかりません" else "該当する検出画像がありません",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             } else {
                 TopicGrid(

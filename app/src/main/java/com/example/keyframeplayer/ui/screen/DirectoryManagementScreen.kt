@@ -24,12 +24,6 @@ import com.example.keyframeplayer.ui.viewmodel.ImageRecognitionViewModel
 import com.example.keyframeplayer.util.VideoInfo
 import kotlinx.coroutines.launch
 
-// --- 追加: 画面の状態を表すenum ---
-enum class ManagementScreenState {
-    SELECT_DIRECTORY, // 通常の画面（ボトムシート含む）
-    LOADING           // 動画処理中のローディング画面
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DirectoryManagementScreen(
@@ -43,10 +37,8 @@ fun DirectoryManagementScreen(
     val context = LocalContext.current
     val keyFrameViewModel: ImageRecognitionViewModel = hiltViewModel()
 
-    // --- 追加: 現在の画面状態を管理するState ---
-    var currentScreenState by remember { mutableStateOf(ManagementScreenState.SELECT_DIRECTORY) }
-    // --- 追加: 決定された動画リストを保持するState ---
-    var confirmedVideoInfos by remember { mutableStateOf<List<VideoInfo>>(emptyList()) }
+    // 処理開始ボタンの二重押し防止 (開始処理は非同期にフラグが立つため、ローカルでも抑止する)
+    var hasStartedProcessing by remember { mutableStateOf(false) }
 
     var showBottomSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(
@@ -91,63 +83,48 @@ fun DirectoryManagementScreen(
         }
     }
 
-    when (currentScreenState) {
-        ManagementScreenState.LOADING -> {
-            // --- 追加: ローディング画面の呼び出し ---
-            VideoKeyFrameLoadingScreen(
-                viewModel = keyFrameViewModel,
-                currentUri = currentUri,
-                isAccessible = isAccessible,
-                videoInfos = confirmedVideoInfos,
-                onChooseClick = onChooseClick,
-                onFinished = onProcessingFinished
-            )
-        }
-        ManagementScreenState.SELECT_DIRECTORY -> {
-            Scaffold(
-                floatingActionButton = {
-                    FloatingActionButton(
-                        // 【修正2】 無効時は onClick を null にするか、処理をスキップする
-                        onClick = { if (isFabEnabled) showBottomSheet = true },
-                        // 【修正3】 有効・無効に合わせて色を切り替える
-                        containerColor = if (isFabEnabled) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            ButtonDefaults.buttonColors().disabledContainerColor // 無効時の背景色（お好みで変更可）
-                        },
-                        contentColor = if (isFabEnabled) {
-                            MaterialTheme.colorScheme.onPrimary
-                        } else {
-                            ButtonDefaults.buttonColors().disabledContentColor // 無効時のアイコン色
-                        },
-                        elevation = if (isFabEnabled) {
-                            FloatingActionButtonDefaults.elevation()
-                        } else {
-                            FloatingActionButtonDefaults.elevation(
-                                defaultElevation = 0.dp,
-                                pressedElevation = 0.dp,
-                                focusedElevation = 0.dp,
-                                hoveredElevation = 0.dp
-                            )
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "Open Range Form"
-                        )
-                    }
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(
+                // 【修正2】 無効時は onClick を null にするか、処理をスキップする
+                onClick = { if (isFabEnabled) showBottomSheet = true },
+                // 【修正3】 有効・無効に合わせて色を切り替える
+                containerColor = if (isFabEnabled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    ButtonDefaults.buttonColors().disabledContainerColor // 無効時の背景色（お好みで変更可）
+                },
+                contentColor = if (isFabEnabled) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    ButtonDefaults.buttonColors().disabledContentColor // 無効時のアイコン色
+                },
+                elevation = if (isFabEnabled) {
+                    FloatingActionButtonDefaults.elevation()
+                } else {
+                    FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 0.dp,
+                        pressedElevation = 0.dp,
+                        focusedElevation = 0.dp,
+                        hoveredElevation = 0.dp
+                    )
                 }
-
-            ) { innerPadding ->
-                SelectDirectoryScreen(
-                    currentUri = currentUri,
-                    isAccessible = isAccessible,
-                    isLoading = isLoading,
-                    onChooseClick = onChooseClick,
-                    modifier = Modifier.padding(innerPadding)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = "Open Range Form"
                 )
             }
         }
+
+    ) { innerPadding ->
+        SelectDirectoryScreen(
+            currentUri = currentUri,
+            isAccessible = isAccessible,
+            isLoading = isLoading,
+            onChooseClick = onChooseClick,
+            modifier = Modifier.padding(innerPadding)
+        )
     }
 
     if (showBottomSheet) {
@@ -362,20 +339,22 @@ fun DirectoryManagementScreen(
                         }
                         Button(
                             onClick = {
+                                if (hasStartedProcessing) return@Button
                                 if (selectedStartVideo != null && selectedEndVideo != null) {
                                     val startIdx = videoInfos.indexOf(selectedStartVideo)
                                     val endIdx = videoInfos.indexOf(selectedEndVideo)
                                     val selectedVideoInfos = videoInfos.subList(startIdx, endIdx + 1)
 
-                                    // 【修正ポイント】
-                                    // 1. 選択されたデータをStateに保存
-                                    confirmedVideoInfos = selectedVideoInfos
+                                    hasStartedProcessing = true
+
+                                    // 処理を開始したら、ローディング画面を挟まずにリスト画面へ遷移する
+                                    // (進捗はリスト画面のトップバー下のバーで表示される)
+                                    keyFrameViewModel.startProcessing(selectedVideoInfos)
 
                                     scope.launch {
                                         sheetState.hide()
                                         showBottomSheet = false
-                                        // 2. ボトムシートが閉じた後に画面状態をLOADINGに切り替える
-                                        currentScreenState = ManagementScreenState.LOADING
+                                        onProcessingFinished()
                                     }
                                 } else {
                                     Toast.makeText(context, "動画範囲を選択してください", Toast.LENGTH_SHORT).show()
