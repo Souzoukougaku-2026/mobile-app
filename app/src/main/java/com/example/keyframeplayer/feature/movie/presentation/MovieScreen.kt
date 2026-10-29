@@ -96,6 +96,7 @@ fun MovieScreen(
     }
 
     // 動画リスト (MediaItems) のセットアップ
+    // 自動再生はしない: 開始位置にシークした状態で停止しておき、再生はユーザーの操作で始める
     LaunchedEffect(uiState.videos) {
         if (uiState.videos.isNotEmpty()) {
             val mediaItems = uiState.videos.map { video ->
@@ -106,11 +107,9 @@ fun MovieScreen(
             if (uiState.initialMediaItemIndex in uiState.videos.indices) {
                 exoPlayer.seekTo(uiState.initialMediaItemIndex, uiState.initialPositionMs)
             }
-            exoPlayer.playWhenReady = true
         } else if (uiState.videoUri != null && uiState.videoUri != Uri.EMPTY) {
             exoPlayer.setMediaItem(MediaItem.fromUri(uiState.videoUri))
             exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
         }
     }
 
