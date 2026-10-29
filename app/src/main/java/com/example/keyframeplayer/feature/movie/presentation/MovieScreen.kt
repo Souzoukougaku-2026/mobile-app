@@ -1,9 +1,9 @@
 package com.example.keyframeplayer.feature.movie.presentation
 
+import android.content.Context
 import android.net.Uri
 import android.view.View
 import android.widget.PopupMenu
-import java.util.UUID
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.*
@@ -31,14 +32,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.feature.movie.presentation.components.*
 import com.example.keyframeplayer.ui.component.ProcessingProgressBar
+import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -57,7 +56,6 @@ fun MovieRoute(
         onTimeChanged = viewModel::onTimeChanged,
         onSkipBy = viewModel::onSkipBy,
         onProgressTapped = viewModel::onProgressTapped,
-        onVisibleRangeChanged = viewModel::onVisibleRangeChanged,
         onPlayerPositionUpdated = viewModel::onPlayerPositionUpdated,
         onTimeScaleSelected = viewModel::onTimeScaleSelected,
         onClassFilterSelected = viewModel::onClassFilterSelected,
@@ -76,7 +74,6 @@ fun MovieScreen(
     onTimeChanged: (Float) -> Unit,
     onSkipBy: (Float) -> Unit,
     onProgressTapped: (Float) -> Unit,
-    onVisibleRangeChanged: (Float) -> Unit,
     onPlayerPositionUpdated: (Int, Long) -> Unit,
     onTimeScaleSelected: (TimeScale) -> Unit,
     onClassFilterSelected: (String?) -> Unit,
@@ -236,39 +233,9 @@ fun MovieScreen(
                 .padding(innerPadding)
                 .background(if (isFullScreen) Color.Black else MaterialTheme.colorScheme.background)
         ) {
-            var lastBackClickTime by remember { mutableLongStateOf(0L) }
-
-            // --- ヘッダーエリア (OSステータスバーとの重なりを防止) ---
+            // --- ヘッダーエリア ---
             if (!isFullScreen) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = {
-                                val currentTime = System.currentTimeMillis()
-                                if (currentTime - lastBackClickTime >= 800L) {
-                                    lastBackClickTime = currentTime
-                                    onNavigateBack()
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "戻る"
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-                }
+                MovieHeader(onNavigateBack = onNavigateBack)
             }
 
             // --- ビデオ表示エリア ---
@@ -349,6 +316,76 @@ fun MovieScreen(
             }
         }
     }
+}
+
+/**
+ * 画面上部のヘッダー (戻るボタン、OSステータスバーとの重なりを防止)
+ * 戻るボタンの連打は 800ms 以内を無視する。
+ */
+@Composable
+private fun MovieHeader(onNavigateBack: () -> Unit) {
+    var lastBackClickTime by remember { mutableLongStateOf(0L) }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = {
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastBackClickTime >= 800L) {
+                        lastBackClickTime = currentTime
+                        onNavigateBack()
+                    }
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "戻る"
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+        }
+    }
+}
+
+/**
+ * 動画上オーバーレイの ±10秒 スキップボタン
+ */
+@Composable
+private fun SkipOverlayButton(text: String, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(52.dp)
+            .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
+    ) {
+        Text(text, color = Color.White, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/**
+ * プレイヤーの設定ボタン用、再生速度の選択メニューを表示する
+ */
+private fun showPlaybackSpeedMenu(context: Context, anchor: View, exoPlayer: ExoPlayer) {
+    val popup = PopupMenu(context, anchor)
+    val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+
+    speeds.forEach { speed ->
+        popup.menu.add("${speed}x").setOnMenuItemClickListener {
+            exoPlayer.playbackParameters = PlaybackParameters(speed)
+            true
+        }
+    }
+    popup.show()
 }
 
 /**
@@ -441,16 +478,7 @@ fun VideoPlayerContainer(
                             }
                             val settingsButton = findViewById<View>(androidx.media3.ui.R.id.exo_settings)
                             settingsButton?.setOnClickListener { view ->
-                                val popup = PopupMenu(ctx, view)
-                                val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
-
-                                speeds.forEach { speed ->
-                                    popup.menu.add("${speed}x").setOnMenuItemClickListener {
-                                        exoPlayer.playbackParameters = PlaybackParameters(speed)
-                                        true
-                                    }
-                                }
-                                popup.show()
+                                showPlaybackSpeedMenu(ctx, view, exoPlayer)
                             }
                         }
                     })
@@ -468,29 +496,21 @@ fun VideoPlayerContainer(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
+                SkipOverlayButton(
+                    text = "-10s",
                     onClick = {
                         showRewindIndicator = true
                         onSkipBy(-10f)
-                    },
-                    modifier = Modifier
-                        .size(52.dp)
-                        .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
-                ) {
-                    Text("-10s", color = Color.White, style = MaterialTheme.typography.labelLarge)
-                }
+                    }
+                )
 
-                IconButton(
+                SkipOverlayButton(
+                    text = "+10s",
                     onClick = {
                         showForwardIndicator = true
                         onSkipBy(10f)
-                    },
-                    modifier = Modifier
-                        .size(52.dp)
-                        .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
-                ) {
-                    Text("+10s", color = Color.White, style = MaterialTheme.typography.labelLarge)
-                }
+                    }
+                )
             }
         }
 

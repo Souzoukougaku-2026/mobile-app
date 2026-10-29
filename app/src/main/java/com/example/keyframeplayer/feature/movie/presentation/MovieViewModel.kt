@@ -380,9 +380,6 @@ class MovieViewModel @Inject constructor(
         }
     }
 
-    fun onVisibleRangeChanged(startProgress: Float) {
-    }
-
     private fun mapOverallTimeToVideoPosition(
         timeSec: Float,
         videos: List<VideoEntity>,
