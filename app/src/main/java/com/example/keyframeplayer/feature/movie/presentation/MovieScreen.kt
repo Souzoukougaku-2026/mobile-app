@@ -39,7 +39,6 @@ import com.example.keyframeplayer.feature.movie.presentation.components.*
 import com.example.keyframeplayer.ui.component.ProcessingProgressBar
 import java.util.UUID
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @Composable
 fun MovieRoute(
@@ -141,82 +140,13 @@ fun MovieScreen(
         }
     }
 
-    val snackbarHostState = remember { SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
-
-    // シーク操作ハンドラ: 動画が無いエリアで止まった場合に、移動方向（右:次の先頭 / 左:前の末尾）に応じてシークし、Snackbarを表示
+    // シーク操作ハンドラ: タップ位置をそのまま ViewModel へ渡す。
+    // 動画の無いエリアの場合は ViewModel 側で最寄りの動画端に寄せて処理する (通知は出さない)
     val handleProgressTapped: (Float) -> Unit = { overallProgress ->
-        val minRealTimeMs = uiState.minRealTimeMs
-        val spanMs = maxOf(uiState.totalRealDurationMs, uiState.selectedTimeScale.windowMs)
-        val targetRealTimeMs = minRealTimeMs + (overallProgress * spanMs).toLong()
-
-        val isInVideoRange = uiState.videos.any { video ->
-            targetRealTimeMs in video.realStartTime..video.realEndTime
-        }
-
-        if (!isInVideoRange && uiState.videos.isNotEmpty()) {
-            val isRightDirection = targetRealTimeMs >= uiState.currentRealTimeMs
-
-            if (isRightDirection) {
-                // 右向き (未来方向): 移動した時刻以降で1番最初の動画の「先頭」へジャンプ
-                val candidateVideo = uiState.videos
-                    .filter { it.realStartTime >= targetRealTimeMs }
-                    .minByOrNull { it.realStartTime }
-                    ?: uiState.videos.minByOrNull { it.realStartTime }
-
-                if (candidateVideo != null) {
-                    val targetProgress = if (spanMs > 0L) {
-                        ((candidateVideo.realStartTime - minRealTimeMs).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                    } else 0f
-
-                    onProgressTapped(targetProgress)
-
-                    coroutineScope.launch {
-                        snackbarHostState.currentSnackbarData?.dismiss()
-                        snackbarHostState.showSnackbar(
-                            message = "動画の無いエリアのため、${candidateVideo.name.ifEmpty { "動画" }} の先頭に移動しました",
-                            actionLabel = "閉じる",
-                            duration = SnackbarDuration.Short
-                        )
-                    }
-                } else {
-                    onProgressTapped(overallProgress)
-                }
-            } else {
-                // 左向き (過去方向): 移動した時刻より前で1番最後の動画の「末尾 (最後時点)」へジャンプ
-                val candidateVideo = uiState.videos
-                    .filter { it.realEndTime <= targetRealTimeMs }
-                    .maxByOrNull { it.realEndTime }
-                    ?: uiState.videos.maxByOrNull { it.realEndTime }
-
-                if (candidateVideo != null) {
-                    val targetProgress = if (spanMs > 0L) {
-                        ((candidateVideo.realEndTime - minRealTimeMs).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                    } else 0f
-
-                    onProgressTapped(targetProgress)
-
-                    coroutineScope.launch {
-                        snackbarHostState.currentSnackbarData?.dismiss()
-                        snackbarHostState.showSnackbar(
-                            message = "動画の無いエリアのため、${candidateVideo.name.ifEmpty { "動画" }} の末尾に移動しました",
-                            actionLabel = "閉じる",
-                            duration = SnackbarDuration.Short
-                        )
-                    }
-                } else {
-                    onProgressTapped(overallProgress)
-                }
-            }
-        } else {
-            onProgressTapped(overallProgress)
-        }
+        onProgressTapped(overallProgress)
     }
 
     Scaffold(
-        snackbarHost = {
-            SnackbarHost(hostState = snackbarHostState)
-        },
         bottomBar = {
             ProcessingProgressBar(
                 isProcessing = processingProgressState.isProcessing,
