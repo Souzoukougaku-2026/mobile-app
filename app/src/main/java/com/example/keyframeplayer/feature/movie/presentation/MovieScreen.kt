@@ -151,7 +151,9 @@ fun MovieScreen(
             ProcessingProgressBar(
                 isProcessing = processingProgressState.isProcessing,
                 progress = processingProgressState.progress,
-                statusText = processingProgressState.statusText
+                statusText = processingProgressState.statusText,
+                // 画面下端に置くため、ナビゲーションバー分の余白を中身に持たせる
+                applyNavigationBarPadding = true
             )
         },
         modifier = Modifier.fillMaxSize()
@@ -284,6 +286,10 @@ private fun MovieHeader(onNavigateBack: () -> Unit) {
                 )
             }
             Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text ="周辺の映像",
+                style = MaterialTheme.typography.titleMedium
+            )
         }
     }
 }

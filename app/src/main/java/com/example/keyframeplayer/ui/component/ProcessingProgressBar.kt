@@ -19,7 +19,10 @@ fun ProcessingProgressBar(
     isProcessing: Boolean,
     progress: Float,
     statusText: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // 画面下端 (Scaffold の bottomBar 等) に置く場合のみ true にする。
+    // トップバー下に置く場合 (ListUpScreen) は下端の余白は不要なので false のまま
+    applyNavigationBarPadding: Boolean = false
 ) {
     AnimatedVisibility(
         visible = isProcessing && progress < 1.0f,
@@ -36,6 +39,13 @@ fun ProcessingProgressBar(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // targetSdk 35 の edge-to-edge では下端に置いたバーがナビゲーション
+                    // バー領域に張り付くため、端末の実高さ分だけ中身を持ち上げる
+                    // (Surface の背景自体は画面端まで届く)。PaginationBar と同じ対処
+                    .then(
+                        if (applyNavigationBarPadding) Modifier.navigationBarsPadding()
+                        else Modifier
+                    )
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 Row(
