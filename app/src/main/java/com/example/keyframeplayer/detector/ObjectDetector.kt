@@ -72,12 +72,19 @@ class ObjectDetector(private val context: Context) {
         val interp = interpreter ?: return listOf()
 
         lateinit var letterboxedBitmap: Bitmap
+        var letterboxScale = 1f
+        var letterboxDx = 0f
+        var letterboxDy = 0f
 
         logTime("2_letterbox") {
-            letterboxedBitmap = finalLetterbox(
+            val (bitmap, scale, offsets) = finalLetterbox(
                 originalBitmap,
                 Config.MODEL_INPUT_SIZE
-            ).first
+            )
+            letterboxedBitmap = bitmap
+            letterboxScale = scale
+            letterboxDx = offsets.first
+            letterboxDy = offsets.second
         }
 
         logTime("3_tensor_prepare") {
@@ -106,6 +113,11 @@ class ObjectDetector(private val context: Context) {
             detectionPool.clear()
             val rawData = outputBuffer[0]
 
+            // レターボックス逆変換用 (モデル出力 → 元画像のピクセル座標へ戻すため)
+            val inputSizeF = Config.MODEL_INPUT_SIZE.toFloat()
+            val srcW = originalBitmap.width.toFloat()
+            val srcH = originalBitmap.height.toFloat()
+
             for (i in 0 until 8400) {
                 var maxScore = 0f
                 var classId = -1
@@ -124,18 +136,23 @@ class ObjectDetector(private val context: Context) {
                     val w = rawData[2][i]
                     val h = rawData[3][i]
 
-                    val x1 = (cx - w / 2f).coerceIn(0f, 1f)
-                    val y1 = (cy - h / 2f).coerceIn(0f, 1f)
-                    val x2 = (cx + w / 2f).coerceIn(0f, 1f)
-                    val y2 = (cy + h / 2f).coerceIn(0f, 1f)
+                    // モデル出力はレターボックス後 (640x640、黒帯含む) の正規化座標なので、
+                    // 「640px化 → 余白を引く → スケールで割る」で元画像のピクセル座標に戻し、正規化する
+                    val x1 = (((cx - w / 2f) * inputSizeF - letterboxDx) / letterboxScale / srcW).coerceIn(0f, 1f)
+                    val y1 = (((cy - h / 2f) * inputSizeF - letterboxDy) / letterboxScale / srcH).coerceIn(0f, 1f)
+                    val x2 = (((cx + w / 2f) * inputSizeF - letterboxDx) / letterboxScale / srcW).coerceIn(0f, 1f)
+                    val y2 = (((cy + h / 2f) * inputSizeF - letterboxDy) / letterboxScale / srcH).coerceIn(0f, 1f)
 
-                    detectionPool.add(
-                        Detection(
-                            labels[classId],
-                            maxScore,
-                            floatArrayOf(x1, y1, x2, y2)
+                    // 黒帯領域のみの検出など、変換後に幅・高さが潰れたものは除外する
+                    if (x2 > x1 && y2 > y1) {
+                        detectionPool.add(
+                            Detection(
+                                labels[classId],
+                                maxScore,
+                                floatArrayOf(x1, y1, x2, y2)
+                            )
                         )
-                    )
+                    }
                 }
             }
 
