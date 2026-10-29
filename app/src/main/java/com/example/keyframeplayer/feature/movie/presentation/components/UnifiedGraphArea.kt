@@ -28,9 +28,11 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.keyframeplayer.core.data.database.entity.VideoEntity
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.core.domain.model.toJapaneseClassName
 import com.example.keyframeplayer.feature.movie.presentation.MovieUiState
@@ -67,6 +69,64 @@ private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
 }
 
 /**
+ * 指の位置 (rawX) から、動画が存在する区間の中だけに制限した赤バーの表示位置を算出する。
+ * 動画のない時間帯では、バーは直前の動画区間の端 (末尾/先頭) で止まり、
+ * 指が次の動画区間に到達するとそこから追随を再開する。
+ * バーが動画区間に無い状態で開始された場合は、最も近い動画の端に置く。
+ */
+private fun snapDragBarXToVideoRange(
+    videos: List<VideoEntity>,
+    minReal: Long,
+    spanMs: Long,
+    canvasWidth: Float,
+    rawX: Float,
+    lastBarX: Float
+): Float {
+    val sortedVideos = videos.sortedBy { it.realStartTime }
+    if (sortedVideos.isEmpty() || canvasWidth <= 0f || spanMs <= 0L) return rawX
+
+    fun timeToX(timeMs: Long): Float =
+        ((timeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f) * canvasWidth
+
+    fun xToTimeMs(x: Float): Long =
+        minReal + ((x / canvasWidth).coerceIn(0f, 1f) * spanMs).toLong()
+
+    val rawTimeMs = xToTimeMs(rawX)
+    if (sortedVideos.any { rawTimeMs in it.realStartTime..it.realEndTime }) {
+        return rawX
+    }
+
+    // 直前のバー位置を含む動画区間の端で止める
+    if (lastBarX >= 0f) {
+        val lastTimeMs = xToTimeMs(lastBarX)
+        val lastVideo = sortedVideos.firstOrNull {
+            lastTimeMs in it.realStartTime..it.realEndTime
+        }
+        if (lastVideo != null) {
+            return if (rawTimeMs > lastTimeMs) {
+                timeToX(lastVideo.realEndTime)
+            } else {
+                timeToX(lastVideo.realStartTime)
+            }
+        }
+    }
+
+    // バーが動画区間に無い状態でドラッグを開始した場合: 最も近い動画の端へ置く
+    var nearestEdgeMs = sortedVideos.first().realStartTime
+    var nearestDist = Long.MAX_VALUE
+    for (video in sortedVideos) {
+        for (edgeMs in listOf(video.realStartTime, video.realEndTime)) {
+            val dist = kotlin.math.abs(edgeMs - rawTimeMs)
+            if (dist < nearestDist) {
+                nearestDist = dist
+                nearestEdgeMs = edgeMs
+            }
+        }
+    }
+    return timeToX(nearestEdgeMs)
+}
+
+/**
  * =========================================================================================
  * 【統合グラフ (Unified Graph Area) - 直感的にカスタマイズ可能な全スケール黄金比目盛り版】
  * =========================================================================================
@@ -92,7 +152,12 @@ fun UnifiedGraphArea(
 
     // 赤バーのドラッグ状態
     var isDraggingRedBar by remember { mutableStateOf(false) }
+    // 指の生の位置 (ドラッグ中の端付近オートスクロール判定に使用)
     var localDragX by remember { mutableFloatStateOf(-1f) }
+    // 赤バーの表示位置 (動画が存在する区間の中だけに制限された位置)
+    var dragBarX by remember { mutableFloatStateOf(-1f) }
+    // グラフ Canvas の実幅 (オートスクロール中のバー位置再計算に使用)
+    var graphCanvasWidthPx by remember { mutableFloatStateOf(0f) }
 
     // 再生位置が変更された場合に scrollState を中央付近へ自動スクロール
     val currentRealTimeMs = uiState.currentRealTimeMs
@@ -159,10 +224,28 @@ fun UnifiedGraphArea(
                     }
 
                     if (delta != 0f) {
+                        val wasBarFollowing = dragBarX >= 0f && dragBarX == localDragX
                         val oldScroll = scrollState.value
                         scrollState.scrollBy(delta)
                         val actualDelta = scrollState.value - oldScroll
                         localDragX = (localDragX + actualDelta).coerceIn(0f, scrollState.maxValue.toFloat() + viewportWidth)
+                        // バーもスクロールに追随させる。ただし動画のない区間では端で止まったままにする
+                        if (dragBarX >= 0f) {
+                            dragBarX = if (graphCanvasWidthPx > 0f) {
+                                snapDragBarXToVideoRange(
+                                    videos = currentUiState.videos,
+                                    minReal = minReal,
+                                    spanMs = spanMs,
+                                    canvasWidth = graphCanvasWidthPx,
+                                    rawX = localDragX,
+                                    lastBarX = dragBarX
+                                )
+                            } else if (wasBarFollowing) {
+                                (dragBarX + actualDelta).coerceIn(0f, scrollState.maxValue.toFloat() + viewportWidth)
+                            } else {
+                                dragBarX
+                            }
+                        }
                     }
                 }
 
@@ -363,6 +446,7 @@ fun UnifiedGraphArea(
                             .fillMaxWidth()
                             .height(105.dp)
                             .padding(horizontal = 16.dp)
+                            .onSizeChanged { graphCanvasWidthPx = it.width.toFloat() }
                             .pointerInput(spanMs, minReal) {
                                 val touchRadiusPx = 40.dp.toPx()
 
@@ -381,8 +465,8 @@ fun UnifiedGraphArea(
                                         val cProgress = if (spanMs > 0L) {
                                             ((currentMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
                                         } else 0f
-                                        val indicatorX = if (isDraggingRedBar && localDragX >= 0f) {
-                                            localDragX
+                                        val indicatorX = if (isDraggingRedBar && dragBarX >= 0f) {
+                                            dragBarX
                                         } else {
                                             cProgress * canvasWidth
                                         }
@@ -398,11 +482,27 @@ fun UnifiedGraphArea(
                                                 isLongPressConfirmed = true
                                                 isDraggingRedBar = true
                                                 localDragX = currentPointerX
+                                                dragBarX = snapDragBarXToVideoRange(
+                                                    videos = currentUiState.videos,
+                                                    minReal = minReal,
+                                                    spanMs = spanMs,
+                                                    canvasWidth = canvasWidth,
+                                                    rawX = currentPointerX,
+                                                    lastBarX = indicatorX
+                                                )
                                             } else {
                                                 delay(350L)
                                                 isLongPressConfirmed = true
                                                 isDraggingRedBar = true
                                                 localDragX = currentPointerX
+                                                dragBarX = snapDragBarXToVideoRange(
+                                                    videos = currentUiState.videos,
+                                                    minReal = minReal,
+                                                    spanMs = spanMs,
+                                                    canvasWidth = canvasWidth,
+                                                    rawX = currentPointerX,
+                                                    lastBarX = indicatorX
+                                                )
                                             }
                                         }
 
@@ -418,7 +518,8 @@ fun UnifiedGraphArea(
                                                 if (!change.pressed) {
                                                     longPressJob.cancel()
                                                     if (isLongPressConfirmed || isDraggingRedBar) {
-                                                        updateProgressForX(currentPointerX)
+                                                        // ドラッグ終了位置は、動画区間内に制限されたバーの位置を使う
+                                                        updateProgressForX(if (dragBarX >= 0f) dragBarX else currentPointerX)
                                                     } else if (!isSlidWithoutLongPress) {
                                                         change.consume()
                                                         updateProgressForX(currentPointerX)
@@ -433,6 +534,14 @@ fun UnifiedGraphArea(
                                                     longPressJob.cancel()
                                                     change.consume()
                                                     localDragX = currentPointerX
+                                                    dragBarX = snapDragBarXToVideoRange(
+                                                        videos = currentUiState.videos,
+                                                        minReal = minReal,
+                                                        spanMs = spanMs,
+                                                        canvasWidth = canvasWidth,
+                                                        rawX = currentPointerX,
+                                                        lastBarX = dragBarX
+                                                    )
                                                 } else if (totalDistance > slop) {
                                                     longPressJob.cancel()
                                                     isSlidWithoutLongPress = true
@@ -443,6 +552,7 @@ fun UnifiedGraphArea(
                                             longPressJob.cancel()
                                             isDraggingRedBar = false
                                             localDragX = -1f
+                                            dragBarX = -1f
                                         }
                                     }
                                 }
@@ -544,8 +654,8 @@ fun UnifiedGraphArea(
                             ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
                         } else 0f
 
-                        val activeIndicatorX = if (isDraggingRedBar && localDragX >= 0f) {
-                            localDragX
+                        val activeIndicatorX = if (isDraggingRedBar && dragBarX >= 0f) {
+                            dragBarX
                         } else {
                             cProgress * canvasWidth
                         }
@@ -559,8 +669,8 @@ fun UnifiedGraphArea(
                             strokeWidth = lineStrokeWidth
                         )
 
-                        val displayMs = if (isDraggingRedBar && localDragX >= 0f) {
-                            val ratio = (localDragX / canvasWidth).coerceIn(0f, 1f)
+                        val displayMs = if (isDraggingRedBar && dragBarX >= 0f) {
+                            val ratio = (dragBarX / canvasWidth).coerceIn(0f, 1f)
                             minReal + (ratio * spanMs).toLong()
                         } else {
                             currentRealTimeMs
