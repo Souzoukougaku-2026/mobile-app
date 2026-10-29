@@ -286,6 +286,10 @@ private fun MovieHeader(onNavigateBack: () -> Unit) {
                 )
             }
             Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text ="周辺の映像",
+                style = MaterialTheme.typography.titleMedium
+            )
         }
     }
 }
