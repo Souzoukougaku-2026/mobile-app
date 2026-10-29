@@ -697,7 +697,7 @@ fun TopicCard(
                     onClick = { onToggleLiked(topic.id, !topic.isLiked) },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(4.dp)
+                        .padding(8.dp)
                         .background(Color.Black.copy(alpha = 0.4f), shape = CircleShape)
                         .size(32.dp)
                 ) {
@@ -705,7 +705,7 @@ fun TopicCard(
                         painter = painterResource(if (topic.isLiked) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
                         contentDescription = "Favorite",
                         tint = if (topic.isLiked) Color(0xFFFF9800) else Color.White,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -715,31 +715,23 @@ fun TopicCard(
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
-                // 1段目: クラス名 (幅いっぱいに表示する)
-                Text(
-                    text = topic.japaneseClassName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                // 2段目: 日時と色
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = formattedDate,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1
+                        text = topic.japaneseClassName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
-                        painter = painterResource(R.drawable.ic_footprint),
+                        painter = painterResource(R.drawable.ic_footprint_filled),
                         contentDescription = topic.color.displayName,
                         tint = topic.color.composeColor,
-                        modifier = Modifier.size(13.dp)
+                        modifier = Modifier
+                            .size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(2.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = topic.color.displayName,
                         style = MaterialTheme.typography.bodySmall,
@@ -747,6 +739,13 @@ fun TopicCard(
                         maxLines = 1
                     )
                 }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = formattedDate,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1
+                )
             }
         }
     }
