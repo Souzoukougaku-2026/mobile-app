@@ -888,27 +888,6 @@ private fun DrawScope.drawVideoSegments(
                 topLeft = Offset(left, 0f),
                 size = Size(width, canvasHeight)
             )
-
-            // 動画領域の上部インジケーターライン
-            drawRect(
-                color = topLineColor,
-                topLeft = Offset(left, 0f),
-                size = Size(width, 4.dp.toPx())
-            )
-
-            // 左右のクッキリした境界線
-            drawLine(
-                color = borderColor,
-                start = Offset(left, 0f),
-                end = Offset(left, canvasHeight),
-                strokeWidth = 2.5.dp.toPx()
-            )
-            drawLine(
-                color = borderColor,
-                start = Offset(right, 0f),
-                end = Offset(right, canvasHeight),
-                strokeWidth = 2.5.dp.toPx()
-            )
         }
     }
 }
