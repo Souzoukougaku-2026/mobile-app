@@ -39,7 +39,6 @@ import com.example.keyframeplayer.feature.movie.presentation.components.*
 import com.example.keyframeplayer.ui.component.ProcessingProgressBar
 import java.util.UUID
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @Composable
 fun MovieRoute(
@@ -96,6 +95,7 @@ fun MovieScreen(
     }
 
     // 動画リスト (MediaItems) のセットアップ
+    // 自動再生はしない: 開始位置にシークした状態で停止しておき、再生はユーザーの操作で始める
     LaunchedEffect(uiState.videos) {
         if (uiState.videos.isNotEmpty()) {
             val mediaItems = uiState.videos.map { video ->
@@ -106,11 +106,9 @@ fun MovieScreen(
             if (uiState.initialMediaItemIndex in uiState.videos.indices) {
                 exoPlayer.seekTo(uiState.initialMediaItemIndex, uiState.initialPositionMs)
             }
-            exoPlayer.playWhenReady = true
         } else if (uiState.videoUri != null && uiState.videoUri != Uri.EMPTY) {
             exoPlayer.setMediaItem(MediaItem.fromUri(uiState.videoUri))
             exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
         }
     }
 
@@ -142,82 +140,13 @@ fun MovieScreen(
         }
     }
 
-    val snackbarHostState = remember { SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
-
-    // シーク操作ハンドラ: 動画が無いエリアで止まった場合に、移動方向（右:次の先頭 / 左:前の末尾）に応じてシークし、Snackbarを表示
+    // シーク操作ハンドラ: タップ位置をそのまま ViewModel へ渡す。
+    // 動画の無いエリアの場合は ViewModel 側で最寄りの動画端に寄せて処理する (通知は出さない)
     val handleProgressTapped: (Float) -> Unit = { overallProgress ->
-        val minRealTimeMs = uiState.minRealTimeMs
-        val spanMs = maxOf(uiState.totalRealDurationMs, uiState.selectedTimeScale.windowMs)
-        val targetRealTimeMs = minRealTimeMs + (overallProgress * spanMs).toLong()
-
-        val isInVideoRange = uiState.videos.any { video ->
-            targetRealTimeMs in video.realStartTime..video.realEndTime
-        }
-
-        if (!isInVideoRange && uiState.videos.isNotEmpty()) {
-            val isRightDirection = targetRealTimeMs >= uiState.currentRealTimeMs
-
-            if (isRightDirection) {
-                // 右向き (未来方向): 移動した時刻以降で1番最初の動画の「先頭」へジャンプ
-                val candidateVideo = uiState.videos
-                    .filter { it.realStartTime >= targetRealTimeMs }
-                    .minByOrNull { it.realStartTime }
-                    ?: uiState.videos.minByOrNull { it.realStartTime }
-
-                if (candidateVideo != null) {
-                    val targetProgress = if (spanMs > 0L) {
-                        ((candidateVideo.realStartTime - minRealTimeMs).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                    } else 0f
-
-                    onProgressTapped(targetProgress)
-
-                    coroutineScope.launch {
-                        snackbarHostState.currentSnackbarData?.dismiss()
-                        snackbarHostState.showSnackbar(
-                            message = "動画の無いエリアのため、${candidateVideo.name.ifEmpty { "動画" }} の先頭に移動しました",
-                            actionLabel = "閉じる",
-                            duration = SnackbarDuration.Short
-                        )
-                    }
-                } else {
-                    onProgressTapped(overallProgress)
-                }
-            } else {
-                // 左向き (過去方向): 移動した時刻より前で1番最後の動画の「末尾 (最後時点)」へジャンプ
-                val candidateVideo = uiState.videos
-                    .filter { it.realEndTime <= targetRealTimeMs }
-                    .maxByOrNull { it.realEndTime }
-                    ?: uiState.videos.maxByOrNull { it.realEndTime }
-
-                if (candidateVideo != null) {
-                    val targetProgress = if (spanMs > 0L) {
-                        ((candidateVideo.realEndTime - minRealTimeMs).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                    } else 0f
-
-                    onProgressTapped(targetProgress)
-
-                    coroutineScope.launch {
-                        snackbarHostState.currentSnackbarData?.dismiss()
-                        snackbarHostState.showSnackbar(
-                            message = "動画の無いエリアのため、${candidateVideo.name.ifEmpty { "動画" }} の末尾に移動しました",
-                            actionLabel = "閉じる",
-                            duration = SnackbarDuration.Short
-                        )
-                    }
-                } else {
-                    onProgressTapped(overallProgress)
-                }
-            }
-        } else {
-            onProgressTapped(overallProgress)
-        }
+        onProgressTapped(overallProgress)
     }
 
     Scaffold(
-        snackbarHost = {
-            SnackbarHost(hostState = snackbarHostState)
-        },
         bottomBar = {
             ProcessingProgressBar(
                 isProcessing = processingProgressState.isProcessing,
@@ -239,9 +168,11 @@ fun MovieScreen(
             }
 
             // --- ビデオ表示エリア ---
+            // 動画が表示されない余白部分は真っ黒にする (テーマ背景色が見えないように)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(Color.Black)
                     .then(
                         if (isFullScreen) Modifier.weight(1f) else Modifier.aspectRatio(16f / 9f)
                     )
@@ -446,6 +377,9 @@ fun VideoPlayerContainer(
                 PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = true
+                    // フレームが無い部分 (レターボックスや再生前のシャッター) は真っ黒にする
+                    setBackgroundColor(android.graphics.Color.BLACK)
+                    setShutterBackgroundColor(android.graphics.Color.BLACK)
                     setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
                         isControllerVisible = (visibility == View.VISIBLE)
                         if (visibility == View.VISIBLE) {
