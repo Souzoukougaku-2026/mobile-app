@@ -334,7 +334,7 @@ fun MyTopBar(
     }
 
     TopAppBar(
-        title = { Text("検出画像一覧") },
+        title = { Text("探し物 一覧") },
         actions = {
             IconButton(onClick = { onExpandedChange(true) }) {
                 Icon(Icons.Default.FilterAlt, contentDescription = "並べ替えとフィルター")
