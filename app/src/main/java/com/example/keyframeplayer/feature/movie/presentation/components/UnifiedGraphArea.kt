@@ -73,6 +73,10 @@ private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
  * 動画のない時間帯では、バーは直前の動画区間の端 (末尾/先頭) で止まり、
  * 指が次の動画区間に到達するとそこから追随を再開する。
  * バーが動画区間に無い状態で開始された場合は、最も近い動画の端に置く。
+ *
+ * rawX はまず描画幅の範囲に丸める。右端の自動スクロールでは指位置が要素全体幅まで
+ * 進み得るため、丸めずに時刻換算すると割合が 1.0 に張り付き、軸の右端=最後の動画の
+ * 終端の場合に「区間内」と誤判定してバーが終端を超えてしまう。
  */
 private fun snapDragBarXToVideoRange(
     videos: List<VideoEntity>,
@@ -82,8 +86,11 @@ private fun snapDragBarXToVideoRange(
     rawX: Float,
     lastBarX: Float
 ): Float {
+    if (canvasWidth <= 0f || spanMs <= 0L) return rawX
+    val clampedRawX = rawX.coerceIn(0f, canvasWidth)
+
     val sortedVideos = videos.sortedBy { it.realStartTime }
-    if (sortedVideos.isEmpty() || canvasWidth <= 0f || spanMs <= 0L) return rawX
+    if (sortedVideos.isEmpty()) return clampedRawX
 
     fun timeToX(timeMs: Long): Float =
         ((timeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f) * canvasWidth
@@ -91,9 +98,9 @@ private fun snapDragBarXToVideoRange(
     fun xToTimeMs(x: Float): Long =
         minReal + ((x / canvasWidth).coerceIn(0f, 1f) * spanMs).toLong()
 
-    val rawTimeMs = xToTimeMs(rawX)
+    val rawTimeMs = xToTimeMs(clampedRawX)
     if (sortedVideos.any { rawTimeMs in it.realStartTime..it.realEndTime }) {
-        return rawX
+        return clampedRawX
     }
 
     // 直前のバー位置を含む動画区間の端で止める
