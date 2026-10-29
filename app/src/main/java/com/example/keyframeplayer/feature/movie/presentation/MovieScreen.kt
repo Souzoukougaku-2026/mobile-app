@@ -168,9 +168,11 @@ fun MovieScreen(
             }
 
             // --- ビデオ表示エリア ---
+            // 動画が表示されない余白部分は真っ黒にする (テーマ背景色が見えないように)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(Color.Black)
                     .then(
                         if (isFullScreen) Modifier.weight(1f) else Modifier.aspectRatio(16f / 9f)
                     )
@@ -375,6 +377,9 @@ fun VideoPlayerContainer(
                 PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = true
+                    // フレームが無い部分 (レターボックスや再生前のシャッター) は真っ黒にする
+                    setBackgroundColor(android.graphics.Color.BLACK)
+                    setShutterBackgroundColor(android.graphics.Color.BLACK)
                     setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
                         isControllerVisible = (visibility == View.VISIBLE)
                         if (visibility == View.VISIBLE) {
