@@ -90,7 +90,14 @@ class MLWorker(
         return try {
             cropped.detectDominantColor()
         } finally {
-            if (!bitmap.isRecycled) bitmap.recycle()
+            // 解放するのは切り抜き画像だけにする。元の bitmap は参照で渡されており、
+            // 呼び出し側 (doWork) が残りの検出でも使うため、ここで解放してはいけない
+            // (本体の解放は doWork の finally で1回だけ行う)。
+            // 切り抜き範囲が画像全体と一致した場合は createBitmap が元の bitmap 自身を
+            // 返すため、その場合は解放しない。
+            if (cropped !== bitmap && !cropped.isRecycled) {
+                cropped.recycle()
+            }
         }
     }
 
