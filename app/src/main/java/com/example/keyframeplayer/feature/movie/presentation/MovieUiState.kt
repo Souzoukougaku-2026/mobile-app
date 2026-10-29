@@ -4,16 +4,6 @@ import androidx.compose.runtime.Immutable
 import com.example.keyframeplayer.core.data.database.entity.VideoEntity
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
-import java.util.TimeZone
-
-/**
- * 画面上のビューポート（描画可能範囲の横幅全体）がカバーする時間情報
- */
-data class ViewportTimeRange(
-    val startRealTimeMs: Long,
-    val endRealTimeMs: Long,
-    val durationMs: Long // ＝ 描画可能範囲の横幅の時間差
-)
 
 /**
  * 表示スケールの定義
@@ -112,14 +102,6 @@ enum class TimeScale(
     }
 }
 
-private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
-    if (intervalMs <= 0L) return timeMs
-    val tzOffset = TimeZone.getDefault().getOffset(timeMs)
-    val localMs = timeMs + tzOffset
-    val alignedLocalMs = (localMs / intervalMs) * intervalMs
-    return alignedLocalMs - tzOffset
-}
-
 @Immutable
 data class MovieUiState(
     val videoUri: android.net.Uri? = null,
@@ -151,18 +133,6 @@ data class MovieUiState(
     val maxRealTimeMs: Long = 0L,
     val seekTarget: SeekTarget? = null
 ) {
-    /**
-     * 現在選択されているグラフ1画面（描画可能範囲の横幅全体）がカバーする時間差（ミリ秒）
-     */
-    val scaleWindowMs: Long
-        get() = selectedTimeScale.windowMs
-
-    /**
-     * 現在選択されているグラフ1画面（描画可能範囲の横幅全体）がカバーする時間差（秒）
-     */
-    val scaleWindowSeconds: Long
-        get() = selectedTimeScale.windowSeconds
-
     val totalRealDurationMs: Long
         get() {
             val diff = maxRealTimeMs - minRealTimeMs
@@ -172,63 +142,6 @@ data class MovieUiState(
                 (totalDurationSeconds * 1000f).toLong().coerceAtLeast(1000L)
             }
         }
-
-    val visibleRangeWidth: Float
-        get() {
-            val windowMs = selectedTimeScale.windowMs
-            val spanMs = maxOf(totalRealDurationMs, windowMs)
-            return (windowMs.toFloat() / spanMs.toFloat()).coerceIn(0.05f, 1f)
-        }
-
-    /**
-     * 画面上のスクロール状態（ピクセル位置）から、現在画面に映っている【描画可能範囲の横幅の時間差】を明示的に算出・取得する
-     */
-    fun getViewportTimeRange(
-        scrollOffsetPx: Float,
-        viewportWidthPx: Float,
-        canvasTotalWidthPx: Float
-    ): ViewportTimeRange {
-        val windowMs = selectedTimeScale.windowMs
-        val totalSpanMs = maxOf(totalRealDurationMs, windowMs)
-
-        if (canvasTotalWidthPx <= 0f || totalSpanMs <= 0L) {
-            return ViewportTimeRange(
-                startRealTimeMs = minRealTimeMs,
-                endRealTimeMs = minRealTimeMs + windowMs,
-                durationMs = windowMs
-            )
-        }
-
-        val startMs = minRealTimeMs + ((scrollOffsetPx / canvasTotalWidthPx) * totalSpanMs).toLong()
-        val endMs = minRealTimeMs + (((scrollOffsetPx + viewportWidthPx) / canvasTotalWidthPx) * totalSpanMs).toLong()
-        val timeDiffMs = endMs - startMs
-
-        return ViewportTimeRange(
-            startRealTimeMs = startMs,
-            endRealTimeMs = endMs,
-            durationMs = timeDiffMs
-        )
-    }
-
-    /**
-     * 選択されている TimeScale の正時目盛り刻みに完全に合致した【アライン済みの開始絶対時刻(ms)】と【総時間幅(ms)】を取得する
-     */
-    fun getAlignedBounds(): Pair<Long, Long> {
-        val intervalMs = selectedTimeScale.majorTickMs
-        val windowMs = selectedTimeScale.windowMs
-
-        val rawMinReal = minRealTimeMs
-        val rawSpanMs = maxOf(totalRealDurationMs, windowMs)
-        val rawMaxReal = rawMinReal + rawSpanMs
-
-        val minReal = alignToRoundTime(rawMinReal, intervalMs)
-        var alignedMaxReal = alignToRoundTime(rawMaxReal, intervalMs)
-        if (alignedMaxReal < minReal + windowMs) {
-            alignedMaxReal = minReal + windowMs
-        }
-        val spanMs = alignedMaxReal - minReal
-        return minReal to spanMs
-    }
 }
 
 data class SeekTarget(

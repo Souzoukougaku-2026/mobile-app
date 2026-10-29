@@ -1,6 +1,5 @@
 package com.example.keyframeplayer.feature.movie.presentation.components
 
-import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -24,13 +23,16 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.keyframeplayer.core.data.database.entity.VideoEntity
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.core.domain.model.toJapaneseClassName
 import com.example.keyframeplayer.feature.movie.presentation.MovieUiState
@@ -45,26 +47,6 @@ import java.util.TimeZone
 import kotlin.math.ceil
 import kotlin.math.floor
 
-/**
- * TimeScale に連動した主目盛り（大きな目盛り）間隔 (ミリ秒) を取得
- */
-fun TimeScale.getTickIntervalMs(): Long = majorTickMs
-
-/**
- * TimeScale に連動した副目盛り（小さい目盛り線）間隔 (ミリ秒) を取得
- */
-fun TimeScale.getSubTickIntervalMs(): Long = minorTickMs
-
-/**
- * Epochミリ秒をタイムゾーン考慮の「キリの良い正時（00分, 15分, 30分や00秒等）」に切り揃えるヘルパー関数
- */
-private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
-    if (intervalMs <= 0L) return timeMs
-    val tzOffset = TimeZone.getDefault().getOffset(timeMs)
-    val localMs = timeMs + tzOffset
-    val alignedLocalMs = (localMs / intervalMs) * intervalMs
-    return alignedLocalMs - tzOffset
-}
 
 /**
  * =========================================================================================
@@ -92,7 +74,12 @@ fun UnifiedGraphArea(
 
     // 赤バーのドラッグ状態
     var isDraggingRedBar by remember { mutableStateOf(false) }
+    // 指の生の位置 (ドラッグ中の端付近オートスクロール判定に使用)
     var localDragX by remember { mutableFloatStateOf(-1f) }
+    // 赤バーの表示位置 (動画が存在する区間の中だけに制限された位置)
+    var dragBarX by remember { mutableFloatStateOf(-1f) }
+    // グラフ Canvas の実幅 (オートスクロール中のバー位置再計算に使用)
+    var graphCanvasWidthPx by remember { mutableFloatStateOf(0f) }
 
     // 再生位置が変更された場合に scrollState を中央付近へ自動スクロール
     val currentRealTimeMs = uiState.currentRealTimeMs
@@ -159,10 +146,28 @@ fun UnifiedGraphArea(
                     }
 
                     if (delta != 0f) {
+                        val wasBarFollowing = dragBarX >= 0f && dragBarX == localDragX
                         val oldScroll = scrollState.value
                         scrollState.scrollBy(delta)
                         val actualDelta = scrollState.value - oldScroll
                         localDragX = (localDragX + actualDelta).coerceIn(0f, scrollState.maxValue.toFloat() + viewportWidth)
+                        // バーもスクロールに追随させる。ただし動画のない区間では端で止まったままにする
+                        if (dragBarX >= 0f) {
+                            dragBarX = if (graphCanvasWidthPx > 0f) {
+                                snapDragBarXToVideoRange(
+                                    videos = currentUiState.videos,
+                                    minReal = minReal,
+                                    spanMs = spanMs,
+                                    canvasWidth = graphCanvasWidthPx,
+                                    rawX = localDragX,
+                                    lastBarX = dragBarX
+                                )
+                            } else if (wasBarFollowing) {
+                                (dragBarX + actualDelta).coerceIn(0f, scrollState.maxValue.toFloat() + viewportWidth)
+                            } else {
+                                dragBarX
+                            }
+                        }
                     }
                 }
 
@@ -173,9 +178,6 @@ fun UnifiedGraphArea(
 
     // ピンチジェスチャーの累積倍率トラッキング
     var accumulatedZoom by remember { mutableFloatStateOf(1.0f) }
-
-    // スケールサイズドロップダウンの開閉状態
-    var timeScaleMenuExpanded by remember { mutableStateOf(false) }
 
     BoxWithConstraints(
         modifier = modifier
@@ -234,111 +236,28 @@ fun UnifiedGraphArea(
                 .padding(vertical = 8.dp)
         ) {
             // ヘッダー: スケールサイズドロップダウン & ズーム操作ヒント
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    // スケールサイズ切り替えドロップダウン
-                    Box {
-                        FilterChip(
-                            selected = true,
-                            onClick = { timeScaleMenuExpanded = true },
-                            label = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                ) {
-                                    Text(
-                                        text = "${timeScale.label}表示",
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowDropDown,
-                                        contentDescription = "表示スケール選択",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-                        )
-
-                        DropdownMenu(
-                            expanded = timeScaleMenuExpanded,
-                            onDismissRequest = { timeScaleMenuExpanded = false }
-                        ) {
-                            TimeScale.entries.forEach { scale ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = "${scale.label}表示",
-                                            fontWeight = if (scale == timeScale) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (scale == timeScale) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        )
-                                    },
-                                    onClick = {
-                                        onTimeScaleSelected(scale)
-                                        timeScaleMenuExpanded = false
-                                    }
-                                )
-                            }
+            UnifiedGraphHeader(
+                timeScale = timeScale,
+                hasPrevKeyframe = prevKeyframe != null,
+                hasNextKeyframe = nextKeyframe != null,
+                onTimeScaleSelected = onTimeScaleSelected,
+                onSeekToPrevKeyframe = {
+                    prevKeyframe?.let { kf ->
+                        if (spanMs > 0L) {
+                            val progress = ((kf.realTime - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                            onProgressTapped(progress)
                         }
                     }
-
-                    // ◀ 前のオブジェクトの時点へ移動
-                    IconButton(
-                        onClick = {
-                            prevKeyframe?.let { kf ->
-                                if (spanMs > 0L) {
-                                    val progress = ((kf.realTime - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                                    onProgressTapped(progress)
-                                }
-                            }
-                        },
-                        enabled = prevKeyframe != null,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "前の検出オブジェクトの時点へ移動",
-                            tint = if (prevKeyframe != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    // ▶ 次のオブジェクトの時点へ移動
-                    IconButton(
-                        onClick = {
-                            nextKeyframe?.let { kf ->
-                                if (spanMs > 0L) {
-                                    val progress = ((kf.realTime - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                                    onProgressTapped(progress)
-                                }
-                            }
-                        },
-                        enabled = nextKeyframe != null,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "次の検出オブジェクトの時点へ移動",
-                            tint = if (nextKeyframe != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                            modifier = Modifier.size(18.dp)
-                        )
+                },
+                onSeekToNextKeyframe = {
+                    nextKeyframe?.let { kf ->
+                        if (spanMs > 0L) {
+                            val progress = ((kf.realTime - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+                            onProgressTapped(progress)
+                        }
                     }
                 }
-
-                Text(
-                    text = "🔍 ピンチで拡大縮小",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
+            )
 
             // 一続きのシームレスな横スクロールコンテナ
             Box(
@@ -363,6 +282,7 @@ fun UnifiedGraphArea(
                             .fillMaxWidth()
                             .height(105.dp)
                             .padding(horizontal = 16.dp)
+                            .onSizeChanged { graphCanvasWidthPx = it.width.toFloat() }
                             .pointerInput(spanMs, minReal) {
                                 val touchRadiusPx = 40.dp.toPx()
 
@@ -381,8 +301,8 @@ fun UnifiedGraphArea(
                                         val cProgress = if (spanMs > 0L) {
                                             ((currentMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
                                         } else 0f
-                                        val indicatorX = if (isDraggingRedBar && localDragX >= 0f) {
-                                            localDragX
+                                        val indicatorX = if (isDraggingRedBar && dragBarX >= 0f) {
+                                            dragBarX
                                         } else {
                                             cProgress * canvasWidth
                                         }
@@ -398,11 +318,27 @@ fun UnifiedGraphArea(
                                                 isLongPressConfirmed = true
                                                 isDraggingRedBar = true
                                                 localDragX = currentPointerX
+                                                dragBarX = snapDragBarXToVideoRange(
+                                                    videos = currentUiState.videos,
+                                                    minReal = minReal,
+                                                    spanMs = spanMs,
+                                                    canvasWidth = canvasWidth,
+                                                    rawX = currentPointerX,
+                                                    lastBarX = indicatorX
+                                                )
                                             } else {
                                                 delay(350L)
                                                 isLongPressConfirmed = true
                                                 isDraggingRedBar = true
                                                 localDragX = currentPointerX
+                                                dragBarX = snapDragBarXToVideoRange(
+                                                    videos = currentUiState.videos,
+                                                    minReal = minReal,
+                                                    spanMs = spanMs,
+                                                    canvasWidth = canvasWidth,
+                                                    rawX = currentPointerX,
+                                                    lastBarX = indicatorX
+                                                )
                                             }
                                         }
 
@@ -418,7 +354,8 @@ fun UnifiedGraphArea(
                                                 if (!change.pressed) {
                                                     longPressJob.cancel()
                                                     if (isLongPressConfirmed || isDraggingRedBar) {
-                                                        updateProgressForX(currentPointerX)
+                                                        // ドラッグ終了位置は、動画区間内に制限されたバーの位置を使う
+                                                        updateProgressForX(if (dragBarX >= 0f) dragBarX else currentPointerX)
                                                     } else if (!isSlidWithoutLongPress) {
                                                         change.consume()
                                                         updateProgressForX(currentPointerX)
@@ -433,6 +370,14 @@ fun UnifiedGraphArea(
                                                     longPressJob.cancel()
                                                     change.consume()
                                                     localDragX = currentPointerX
+                                                    dragBarX = snapDragBarXToVideoRange(
+                                                        videos = currentUiState.videos,
+                                                        minReal = minReal,
+                                                        spanMs = spanMs,
+                                                        canvasWidth = canvasWidth,
+                                                        rawX = currentPointerX,
+                                                        lastBarX = dragBarX
+                                                    )
                                                 } else if (totalDistance > slop) {
                                                     longPressJob.cancel()
                                                     isSlidWithoutLongPress = true
@@ -443,164 +388,50 @@ fun UnifiedGraphArea(
                                             longPressJob.cancel()
                                             isDraggingRedBar = false
                                             localDragX = -1f
+                                            dragBarX = -1f
                                         }
                                     }
                                 }
                             }
                     ) {
-                        val canvasWidth = size.width
-                        val canvasHeight = size.height
+                        // 1. 全体背景 (動画が存在しない背景区間)
+                        drawGraphBackground(color = noVideoBgColor)
 
-                        // 1. 全体背景 (動画が存在しない背景区間: トーンを落としたシックなカラー)
-                        drawRoundRect(
-                            color = noVideoBgColor,
-                            size = Size(canvasWidth, canvasHeight),
-                            cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
+                        // 2. 動画が存在する範囲
+                        drawVideoSegments(
+                            videos = uiState.videos,
+                            minReal = minReal,
+                            spanMs = spanMs,
+                            backgroundColor = activeVideoBgColor,
+                            borderColor = activeBorderColor,
+                            topLineColor = activeTopLineColor
                         )
 
-                        // 2. 動画が存在する範囲 (ここを圧倒的にクッキリと強調表示！)
-                        for (video in uiState.videos) {
-                            val vStart = video.realStartTime
-                            val vEnd = video.realEndTime
-                            if (vEnd >= minReal && vStart <= minReal + spanMs) {
-                                val startProgress = ((vStart - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                                val endProgress = ((vEnd - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                                val left = startProgress * canvasWidth
-                                val right = endProgress * canvasWidth
-                                val width = (right - left).coerceAtLeast(3f)
-
-                                // 鮮やかなハイライト背景で動画存在領域を強調
-                                drawRect(
-                                    color = activeVideoBgColor,
-                                    topLeft = Offset(left, 0f),
-                                    size = Size(width, canvasHeight)
-                                )
-
-                                // 動画領域の上部インジケーターライン
-                                drawRect(
-                                    color = activeTopLineColor,
-                                    topLeft = Offset(left, 0f),
-                                    size = Size(width, 4.dp.toPx())
-                                )
-
-                                // 左右のクッキリした境界線
-                                drawLine(
-                                    color = activeBorderColor,
-                                    start = Offset(left, 0f),
-                                    end = Offset(left, canvasHeight),
-                                    strokeWidth = 2.5.dp.toPx()
-                                )
-                                drawLine(
-                                    color = activeBorderColor,
-                                    start = Offset(right, 0f),
-                                    end = Offset(right, canvasHeight),
-                                    strokeWidth = 2.5.dp.toPx()
-                                )
-                            }
-                        }
-
-                        // 3. 集計データバーの描画 (画面1幅にぴったり90分割分が入る完璧なアスペクト比で描画)
-                        val barCounts = uiState.graphBarCounts
-                        val totalBarCount = barCounts.size
-                        if (totalBarCount > 0) {
-                            val scrollOffset = scrollState.value.toFloat()
-                            val barWidth = canvasWidth / totalBarCount.toFloat()
-
-                            val firstVisibleIndex = floor(scrollOffset / barWidth).toInt().coerceAtLeast(0)
-                            val lastVisibleIndex = ceil((scrollOffset + viewportWidthPx) / barWidth).toInt().coerceAtMost(totalBarCount - 1)
-
-                            val maxCount = uiState.maxBarCount.toFloat().coerceAtLeast(1f)
-                            val cProgress = if (spanMs > 0L) {
-                                ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                            } else 0f
-                            val currentBarIndex = (cProgress * totalBarCount).toInt().coerceIn(0, totalBarCount - 1)
-
-                            for (i in firstVisibleIndex..lastVisibleIndex) {
-                                val count = barCounts.getOrNull(i) ?: 0
-                                if (count <= 0) continue
-
-                                val left = i * barWidth
-                                val drawWidth = (barWidth * 0.82f).coerceAtLeast(1f)
-                                val inset = (barWidth - drawWidth) / 2f
-
-                                val barHeightRatio = count.toFloat() / maxCount
-                                val barHeightPx = (canvasHeight * 0.75f) * barHeightRatio
-                                val top = canvasHeight - barHeightPx
-
-                                val isCurrent = (i == currentBarIndex)
-                                val color = if (isCurrent) Color.Red else primaryColor
-
-                                drawRoundRect(
-                                    color = color,
-                                    topLeft = Offset(left + inset, top),
-                                    size = Size(drawWidth, barHeightPx),
-                                    cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx())
-                                )
-                            }
-                        }
-
-                        // 4. 赤バー（インジケーター）描画
-                        val cProgress = if (spanMs > 0L) {
-                            ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
-                        } else 0f
-
-                        val activeIndicatorX = if (isDraggingRedBar && localDragX >= 0f) {
-                            localDragX
-                        } else {
-                            cProgress * canvasWidth
-                        }
-
-                        val lineStrokeWidth = if (isDraggingRedBar) 4.dp.toPx() else 2.5.dp.toPx()
-
-                        drawLine(
-                            color = Color.Red,
-                            start = Offset(activeIndicatorX, 0f),
-                            end = Offset(activeIndicatorX, canvasHeight),
-                            strokeWidth = lineStrokeWidth
+                        // 3. 集計データバー
+                        drawHistogramBars(
+                            barCounts = uiState.graphBarCounts,
+                            maxBarCount = uiState.maxBarCount,
+                            currentRealTimeMs = currentRealTimeMs,
+                            minReal = minReal,
+                            spanMs = spanMs,
+                            scrollOffset = scrollState.value.toFloat(),
+                            viewportWidthPx = viewportWidthPx,
+                            primaryColor = primaryColor
                         )
 
-                        val displayMs = if (isDraggingRedBar && localDragX >= 0f) {
-                            val ratio = (localDragX / canvasWidth).coerceIn(0f, 1f)
-                            minReal + (ratio * spanMs).toLong()
-                        } else {
-                            currentRealTimeMs
-                        }
+                        // 4. 赤バー（インジケーター）
+                        drawRedBarIndicator(
+                            currentRealTimeMs = currentRealTimeMs,
+                            minReal = minReal,
+                            spanMs = spanMs,
+                            isDragging = isDraggingRedBar,
+                            dragBarX = dragBarX,
+                            timeScale = timeScale
+                        )
 
-                        val dateTimeSdf = when (timeScale) {
-                            TimeScale.THREE_DAYS, TimeScale.ONE_DAY -> SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
-                            else -> SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-                        }
-                        val dateTimeText = if (displayMs > 0L) dateTimeSdf.format(Date(displayMs)) else ""
-
-                        if (dateTimeText.isNotEmpty()) {
-                            val paint = android.graphics.Paint().apply {
-                                color = android.graphics.Color.WHITE
-                                textSize = 10.dp.toPx()
-                                isFakeBoldText = true
-                                textAlign = android.graphics.Paint.Align.CENTER
-                            }
-                            val textWidth = paint.measureText(dateTimeText)
-                            val bgWidth = textWidth + 14.dp.toPx()
-                            val bgHeight = 20.dp.toPx()
-                            val bgLeft = (activeIndicatorX - bgWidth / 2f).coerceIn(0f, canvasWidth - bgWidth)
-
-                            drawRoundRect(
-                                color = if (isDraggingRedBar) Color(0xFFFF3333) else Color.Red,
-                                topLeft = Offset(bgLeft, 0f),
-                                size = Size(bgWidth, bgHeight),
-                                cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
-                            )
-
-                            drawContext.canvas.nativeCanvas.drawText(
-                                dateTimeText,
-                                bgLeft + bgWidth / 2f,
-                                bgHeight - 5.dp.toPx(),
-                                paint
-                            )
-                        }
                     }
 
-                    // 2. 選択された TimeScale で指定された majorTickMs / minorTickMs を詳細ログ出力しつつ描画
+                    // 2. 目盛り描画
                     UnifiedTimeTicks(
                         uiState = uiState,
                         minReal = minReal,
@@ -614,8 +445,118 @@ fun UnifiedGraphArea(
     }
 }
 
+
 /**
- * 画面横スライド・TimeScale に直結・完全連動し、目盛り計算の詳細パラメータを Logcat に出力するコンポーネント
+ * グラフ上部のヘッダー行 (スケール選択ドロップダウン、前/次の検出オブジェクトへの移動ボタン)
+ */
+@Composable
+private fun UnifiedGraphHeader(
+    timeScale: TimeScale,
+    hasPrevKeyframe: Boolean,
+    hasNextKeyframe: Boolean,
+    onTimeScaleSelected: (TimeScale) -> Unit,
+    onSeekToPrevKeyframe: () -> Unit,
+    onSeekToNextKeyframe: () -> Unit
+) {
+    // スケールサイズドロップダウンの開閉状態
+    var timeScaleMenuExpanded by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // スケールサイズ切り替えドロップダウン
+            Box {
+                FilterChip(
+                    selected = true,
+                    onClick = { timeScaleMenuExpanded = true },
+                    label = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = "${timeScale.label}表示",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "表示スケール選択",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                )
+
+                DropdownMenu(
+                    expanded = timeScaleMenuExpanded,
+                    onDismissRequest = { timeScaleMenuExpanded = false }
+                ) {
+                    TimeScale.entries.forEach { scale ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = "${scale.label}表示",
+                                    fontWeight = if (scale == timeScale) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (scale == timeScale) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            onClick = {
+                                onTimeScaleSelected(scale)
+                                timeScaleMenuExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // ◀ 前のオブジェクトの時点へ移動
+            IconButton(
+                onClick = onSeekToPrevKeyframe,
+                enabled = hasPrevKeyframe,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "前の検出オブジェクトの時点へ移動",
+                    tint = if (hasPrevKeyframe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            // ▶ 次のオブジェクトの時点へ移動
+            IconButton(
+                onClick = onSeekToNextKeyframe,
+                enabled = hasNextKeyframe,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = "次の検出オブジェクトの時点へ移動",
+                    tint = if (hasNextKeyframe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        Text(
+            text = "🔍 ピンチで拡大縮小",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+
+/**
+ * 画面横スライド・TimeScale に直結・完全連動する目盛り描画コンポーネント
  */
 @Composable
 fun UnifiedTimeTicks(
@@ -651,14 +592,6 @@ fun UnifiedTimeTicks(
             val visibleStartMs = minReal + ((scrollOffset / canvasWidth) * spanMs).toLong()
             val visibleEndMs = minReal + (((scrollOffset + viewportWidthPx) / canvasWidth) * spanMs).toLong()
 
-            val debugSdf = SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS", Locale.getDefault())
-
-            Log.d("UnifiedTimeTicks", "==================================================")
-            Log.d("UnifiedTimeTicks", "[Scale] label=${timeScale.label}, majorTickMs=$majorIntervalMs (${majorIntervalMs / 1000}s), minorTickMs=$minorIntervalMs (${minorIntervalMs / 1000}s)")
-            Log.d("UnifiedTimeTicks", "[Canvas] width=${canvasWidth}px, viewportWidth=${viewportWidthPx}px, scrollOffset=${scrollOffset}px")
-            Log.d("UnifiedTimeTicks", "[Timeline Bounds] minReal=${debugSdf.format(Date(minReal))}, maxReal=${debugSdf.format(Date(maxReal))}, spanMs=${spanMs}ms (${spanMs / 1000}s)")
-            Log.d("UnifiedTimeTicks", "[Visible Range] Left(Start)=${debugSdf.format(Date(visibleStartMs))}, Right(End)=${debugSdf.format(Date(visibleEndMs))}, 1画面表示幅=${(visibleEndMs - visibleStartMs)}ms (${(visibleEndMs - visibleStartMs) / 1000}s)")
-
             // 1. 小目盛り（100%忠実描画、大目盛りと被る位置はスッキリ除外）
             if (minorIntervalMs > 0L) {
                 val firstMinor = alignToRoundTime(visibleStartMs, minorIntervalMs)
@@ -686,8 +619,6 @@ fun UnifiedTimeTicks(
             val firstMajor = alignToRoundTime(visibleStartMs, majorIntervalMs)
             val lastMajor = alignToRoundTime(visibleEndMs, majorIntervalMs) + majorIntervalMs
 
-            Log.d("UnifiedTimeTicks", "[Major Loop] firstMajor=${debugSdf.format(Date(firstMajor))}, lastMajor=${debugSdf.format(Date(lastMajor))}")
-
             val timeSdf = when (timeScale) {
                 TimeScale.THREE_DAYS, TimeScale.ONE_DAY -> SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
                 TimeScale.TWELVE_HOURS, TimeScale.SIX_HOURS, TimeScale.THREE_HOURS, TimeScale.ONE_HALF_HOURS, TimeScale.THIRTY_MINUTES, TimeScale.TEN_MINUTES -> SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -695,7 +626,6 @@ fun UnifiedTimeTicks(
             }
 
             var t = firstMajor
-            var count = 0
             while (t <= lastMajor && t <= maxReal + majorIntervalMs) {
                 if (t >= minReal) {
                     val x = ((t - minReal).toDouble() / spanMs.toDouble() * canvasWidth).toFloat()
@@ -708,9 +638,6 @@ fun UnifiedTimeTicks(
                     )
 
                     val label = timeSdf.format(Date(t))
-                    count++
-
-                    Log.d("UnifiedTimeTicks", "  -> 大目盛り #$count: 時刻=${debugSdf.format(Date(t))} (表示ラベル='$label'), 描画x座標=${x}px")
 
                     drawContext.canvas.nativeCanvas.drawText(
                         label,
@@ -727,10 +654,10 @@ fun UnifiedTimeTicks(
                 }
                 t += majorIntervalMs
             }
-            Log.d("UnifiedTimeTicks", "==================================================")
         }
     }
 }
+
 
 /**
  * クラス/色フィルター操作用コントロールUI
@@ -904,4 +831,279 @@ fun GraphControlArea(
             }
         }
     }
+}
+
+
+/**
+ * グラフ全体の背景 (動画が存在しない背景区間: トーンを落としたシックなカラー)
+ */
+private fun DrawScope.drawGraphBackground(color: Color) {
+    drawRoundRect(
+        color = color,
+        size = Size(size.width, size.height),
+        cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
+    )
+}
+
+
+/**
+ * 動画が存在する範囲の描画 (ハイライト背景、上部インジケーターライン、左右の境界線)
+ */
+private fun DrawScope.drawVideoSegments(
+    videos: List<VideoEntity>,
+    minReal: Long,
+    spanMs: Long,
+    backgroundColor: Color,
+    borderColor: Color,
+    topLineColor: Color
+) {
+    val canvasWidth = size.width
+    val canvasHeight = size.height
+
+    for (video in videos) {
+        val vStart = video.realStartTime
+        val vEnd = video.realEndTime
+        if (vEnd >= minReal && vStart <= minReal + spanMs) {
+            val startProgress = ((vStart - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+            val endProgress = ((vEnd - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+            val left = startProgress * canvasWidth
+            val right = endProgress * canvasWidth
+            val width = (right - left).coerceAtLeast(3f)
+
+            // 鮮やかなハイライト背景で動画存在領域を強調
+            drawRect(
+                color = backgroundColor,
+                topLeft = Offset(left, 0f),
+                size = Size(width, canvasHeight)
+            )
+
+            // 動画領域の上部インジケーターライン
+            drawRect(
+                color = topLineColor,
+                topLeft = Offset(left, 0f),
+                size = Size(width, 4.dp.toPx())
+            )
+
+            // 左右のクッキリした境界線
+            drawLine(
+                color = borderColor,
+                start = Offset(left, 0f),
+                end = Offset(left, canvasHeight),
+                strokeWidth = 2.5.dp.toPx()
+            )
+            drawLine(
+                color = borderColor,
+                start = Offset(right, 0f),
+                end = Offset(right, canvasHeight),
+                strokeWidth = 2.5.dp.toPx()
+            )
+        }
+    }
+}
+
+
+/**
+ * 集計データバー (ヒストグラム) の描画 (可視範囲分のみ)
+ */
+private fun DrawScope.drawHistogramBars(
+    barCounts: List<Int>,
+    maxBarCount: Int,
+    currentRealTimeMs: Long,
+    minReal: Long,
+    spanMs: Long,
+    scrollOffset: Float,
+    viewportWidthPx: Float,
+    primaryColor: Color
+) {
+    val canvasWidth = size.width
+    val canvasHeight = size.height
+    val totalBarCount = barCounts.size
+    if (totalBarCount <= 0) return
+
+    val barWidth = canvasWidth / totalBarCount.toFloat()
+
+    val firstVisibleIndex = floor(scrollOffset / barWidth).toInt().coerceAtLeast(0)
+    val lastVisibleIndex = ceil((scrollOffset + viewportWidthPx) / barWidth).toInt().coerceAtMost(totalBarCount - 1)
+
+    val maxCount = maxBarCount.toFloat().coerceAtLeast(1f)
+    val cProgress = if (spanMs > 0L) {
+        ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+    val currentBarIndex = (cProgress * totalBarCount).toInt().coerceIn(0, totalBarCount - 1)
+
+    for (i in firstVisibleIndex..lastVisibleIndex) {
+        val count = barCounts.getOrNull(i) ?: 0
+        if (count <= 0) continue
+
+        val left = i * barWidth
+        val drawWidth = (barWidth * 0.82f).coerceAtLeast(1f)
+        val inset = (barWidth - drawWidth) / 2f
+
+        val barHeightRatio = count.toFloat() / maxCount
+        val barHeightPx = (canvasHeight * 0.75f) * barHeightRatio
+        val top = canvasHeight - barHeightPx
+
+        val isCurrent = (i == currentBarIndex)
+        val color = if (isCurrent) Color.Red else primaryColor
+
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(left + inset, top),
+            size = Size(drawWidth, barHeightPx),
+            cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx())
+        )
+    }
+}
+
+
+/**
+ * 赤バー (現在位置インジケーター) と時刻ラベルの描画
+ */
+private fun DrawScope.drawRedBarIndicator(
+    currentRealTimeMs: Long,
+    minReal: Long,
+    spanMs: Long,
+    isDragging: Boolean,
+    dragBarX: Float,
+    timeScale: TimeScale
+) {
+    val canvasWidth = size.width
+    val canvasHeight = size.height
+
+    val cProgress = if (spanMs > 0L) {
+        ((currentRealTimeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    val activeIndicatorX = if (isDragging && dragBarX >= 0f) {
+        dragBarX
+    } else {
+        cProgress * canvasWidth
+    }
+
+    val lineStrokeWidth = if (isDragging) 4.dp.toPx() else 2.5.dp.toPx()
+
+    drawLine(
+        color = Color.Red,
+        start = Offset(activeIndicatorX, 0f),
+        end = Offset(activeIndicatorX, canvasHeight),
+        strokeWidth = lineStrokeWidth
+    )
+
+    val displayMs = if (isDragging && dragBarX >= 0f) {
+        val ratio = (dragBarX / canvasWidth).coerceIn(0f, 1f)
+        minReal + (ratio * spanMs).toLong()
+    } else {
+        currentRealTimeMs
+    }
+
+    val dateTimeSdf = when (timeScale) {
+        TimeScale.THREE_DAYS, TimeScale.ONE_DAY -> SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())
+        else -> SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+    }
+    val dateTimeText = if (displayMs > 0L) dateTimeSdf.format(Date(displayMs)) else ""
+
+    if (dateTimeText.isNotEmpty()) {
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 10.dp.toPx()
+            isFakeBoldText = true
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+        val textWidth = paint.measureText(dateTimeText)
+        val bgWidth = textWidth + 14.dp.toPx()
+        val bgHeight = 20.dp.toPx()
+        val bgLeft = (activeIndicatorX - bgWidth / 2f).coerceIn(0f, canvasWidth - bgWidth)
+
+        drawRoundRect(
+            color = if (isDragging) Color(0xFFFF3333) else Color.Red,
+            topLeft = Offset(bgLeft, 0f),
+            size = Size(bgWidth, bgHeight),
+            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+        )
+
+        drawContext.canvas.nativeCanvas.drawText(
+            dateTimeText,
+            bgLeft + bgWidth / 2f,
+            bgHeight - 5.dp.toPx(),
+            paint
+        )
+    }
+}
+
+
+/**
+ * Epochミリ秒をタイムゾーン考慮の「キリの良い正時（00分, 15分, 30分や00秒等）」に切り揃えるヘルパー関数
+ */
+private fun alignToRoundTime(timeMs: Long, intervalMs: Long): Long {
+    if (intervalMs <= 0L) return timeMs
+    val tzOffset = TimeZone.getDefault().getOffset(timeMs)
+    val localMs = timeMs + tzOffset
+    val alignedLocalMs = (localMs / intervalMs) * intervalMs
+    return alignedLocalMs - tzOffset
+}
+
+
+/**
+ * 指の位置 (rawX) から、動画が存在する区間の中だけに制限した赤バーの表示位置を算出する。
+ * 動画のない時間帯では、バーは直前の動画区間の端 (末尾/先頭) で止まり、
+ * 指が次の動画区間に到達するとそこから追随を再開する。
+ * バーが動画区間に無い状態で開始された場合は、最も近い動画の端に置く。
+ *
+ * rawX はまず描画幅の範囲に丸める。右端の自動スクロールでは指位置が要素全体幅まで
+ * 進み得るため、丸めずに時刻換算すると割合が 1.0 に張り付き、軸の右端=最後の動画の
+ * 終端の場合に「区間内」と誤判定してバーが終端を超えてしまう。
+ */
+private fun snapDragBarXToVideoRange(
+    videos: List<VideoEntity>,
+    minReal: Long,
+    spanMs: Long,
+    canvasWidth: Float,
+    rawX: Float,
+    lastBarX: Float
+): Float {
+    if (canvasWidth <= 0f || spanMs <= 0L) return rawX
+    val clampedRawX = rawX.coerceIn(0f, canvasWidth)
+
+    val sortedVideos = videos.sortedBy { it.realStartTime }
+    if (sortedVideos.isEmpty()) return clampedRawX
+
+    fun timeToX(timeMs: Long): Float =
+        ((timeMs - minReal).toFloat() / spanMs.toFloat()).coerceIn(0f, 1f) * canvasWidth
+
+    fun xToTimeMs(x: Float): Long =
+        minReal + ((x / canvasWidth).coerceIn(0f, 1f) * spanMs).toLong()
+
+    val rawTimeMs = xToTimeMs(clampedRawX)
+    if (sortedVideos.any { rawTimeMs in it.realStartTime..it.realEndTime }) {
+        return clampedRawX
+    }
+
+    // 直前のバー位置を含む動画区間の端で止める
+    if (lastBarX >= 0f) {
+        val lastTimeMs = xToTimeMs(lastBarX)
+        val lastVideo = sortedVideos.firstOrNull {
+            lastTimeMs in it.realStartTime..it.realEndTime
+        }
+        if (lastVideo != null) {
+            return if (rawTimeMs > lastTimeMs) {
+                timeToX(lastVideo.realEndTime)
+            } else {
+                timeToX(lastVideo.realStartTime)
+            }
+        }
+    }
+
+    // バーが動画区間に無い状態でドラッグを開始した場合: 最も近い動画の端へ置く
+    var nearestEdgeMs = sortedVideos.first().realStartTime
+    var nearestDist = Long.MAX_VALUE
+    for (video in sortedVideos) {
+        for (edgeMs in listOf(video.realStartTime, video.realEndTime)) {
+            val dist = kotlin.math.abs(edgeMs - rawTimeMs)
+            if (dist < nearestDist) {
+                nearestDist = dist
+                nearestEdgeMs = edgeMs
+            }
+        }
+    }
+    return timeToX(nearestEdgeMs)
 }
