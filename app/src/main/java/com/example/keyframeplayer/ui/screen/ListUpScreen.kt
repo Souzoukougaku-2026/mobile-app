@@ -648,7 +648,7 @@ fun TopicGrid(
 @Composable
 fun BboxThumbnail(
     topic: CropImage,
-    cropPaddingRatio: Float = 0.1f,
+    cropPaddingRatio: Float = 0.2f,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
