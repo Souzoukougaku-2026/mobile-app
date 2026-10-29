@@ -13,7 +13,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -80,8 +79,6 @@ fun ListUpScreen(
     // -------------------------------------------------------------
     // 【入力および画面の状態管理（State）】
     // -------------------------------------------------------------
-    var searchText by remember { mutableStateOf("") }
-    var searchVisible by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var currentPage by remember { mutableIntStateOf(0) }
 
@@ -100,29 +97,9 @@ fun ListUpScreen(
         items.map { it.color }.distinct().sortedBy { it.name }
     }
 
-    fun applySearch(text: String, currentItems: List<CropImage>): List<CropImage> {
-        if (text.isBlank()) return currentItems
-        return currentItems
-            .filter {
-                it.className.contains(text, ignoreCase = true) ||
-                it.japaneseClassName.contains(text, ignoreCase = true) ||
-                it.color.displayName.contains(text, ignoreCase = true) ||
-                it.color.name.contains(text, ignoreCase = true)
-            }
-            .sortedByDescending {
-                when {
-                    it.japaneseClassName.equals(text, true) || it.className.equals(text, true) -> 100
-                    it.japaneseClassName.startsWith(text, true) || it.className.startsWith(text, true) -> 80
-                    it.japaneseClassName.contains(text, true) || it.className.contains(text, true) -> 60
-                    else -> 0
-                }
-            }
-    }
-
     // フィルター & ソートが適用された結果のリスト
     val filteredAndSortedItems = remember(
         items,
-        searchText,
         selectedSortOption,
         selectedClassFilter,
         selectedColorFilter,
@@ -130,27 +107,22 @@ fun ListUpScreen(
     ) {
         var list = items
 
-        // 1. 検索テキストフィルタ
-        if (searchText.isNotBlank()) {
-            list = applySearch(searchText, list)
-        }
-
-        // 2. いいね絞り込み
+        // 1. いいね絞り込み
         if (isLikedOnlyFilter) {
             list = list.filter { it.isLiked }
         }
 
-        // 3. クラス絞り込み
+        // 2. クラス絞り込み
         if (selectedClassFilter != null) {
             list = list.filter { it.className.equals(selectedClassFilter, ignoreCase = true) }
         }
 
-        // 4. 色絞り込み
+        // 3. 色絞り込み
         if (selectedColorFilter != null) {
             list = list.filter { it.color == selectedColorFilter }
         }
 
-        // 5. ソート処理
+        // 4. ソート処理
         when (selectedSortOption) {
             ListSortOption.DATE_DESC -> list.sortedByDescending { if (it.realTime > 0L) it.realTime else it.fileTime.toLong() }
             ListSortOption.DATE_ASC -> list.sortedBy { if (it.realTime > 0L) it.realTime else it.fileTime.toLong() }
@@ -179,7 +151,6 @@ fun ListUpScreen(
                 MyTopBar(
                     expanded = menuExpanded,
                     onExpandedChange = { menuExpanded = it },
-                    onSearchClick = { searchVisible = !searchVisible },
                     onRedoDetection = onRedoDetection,
                     isProcessing = processingProgressState.isProcessing,
                     selectedSortOption = selectedSortOption,
@@ -209,7 +180,6 @@ fun ListUpScreen(
                         selectedClassFilter = null
                         selectedColorFilter = null
                         isLikedOnlyFilter = false
-                        searchText = ""
                         currentPage = 0
                     }
                 )
@@ -221,16 +191,6 @@ fun ListUpScreen(
                     statusText = processingProgressState.statusText
                 )
 
-                // 検索入力フィールド
-                if (searchVisible) {
-                    SearchInputField(
-                        value = searchText,
-                        onValueChange = {
-                            searchText = it
-                            currentPage = 0
-                        }
-                    )
-                }
             }
         },
         bottomBar = {
@@ -256,7 +216,7 @@ fun ListUpScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (processingProgressState.isProcessing && searchText.isBlank()) {
+                    if (processingProgressState.isProcessing) {
                         // 処理中 (特にキーフレーム抽出フェーズ) はまだ検出結果が無いだけなので、
                         // 「該当なし」ではなく処理中であることを表示する
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -267,7 +227,7 @@ fun ListUpScreen(
                         }
                     } else {
                         Text(
-                            text = if (searchText.isNotBlank()) "検索結果が見つかりません" else "該当する検出画像がありません",
+                            text = "該当する検出画像がありません",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -340,32 +300,6 @@ fun PaginationBar(
 }
 
 /**
- * 検索入力用のコンポーネント
- */
-@Composable
-fun SearchInputField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        placeholder = { Text("クラス名検索") },
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = "検索"
-            )
-        },
-        singleLine = true
-    )
-}
-
-/**
  * トップバー（ヘッダー・三点リーダーメニュー）
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -373,7 +307,6 @@ fun SearchInputField(
 fun MyTopBar(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
-    onSearchClick: () -> Unit,
     onRedoDetection: () -> Unit,
     isProcessing: Boolean = false,
     selectedSortOption: ListSortOption,
@@ -401,9 +334,6 @@ fun MyTopBar(
     TopAppBar(
         title = { Text("検出画像一覧") },
         actions = {
-            IconButton(onClick = { onSearchClick() }) {
-                Icon(Icons.Default.Search, contentDescription = "検索")
-            }
             IconButton(onClick = { onExpandedChange(true) }) {
                 Icon(Icons.Default.MoreVert, contentDescription = "メニュー")
             }
