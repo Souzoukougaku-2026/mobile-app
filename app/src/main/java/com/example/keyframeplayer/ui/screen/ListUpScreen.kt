@@ -640,6 +640,52 @@ fun TopicGrid(
 }
 
 /**
+ * bbox で切り抜いたサムネイル画像。
+ * キーフレーム全体ではなく検出範囲を表示し、余白は背面 (黒背景) に任せる。
+ *
+ * @param cropPaddingRatio 切り抜き範囲を各辺に広げる割合 (0.1f = 幅・高さの10%ずつ)
+ */
+@Composable
+fun BboxThumbnail(
+    topic: CropImage,
+    cropPaddingRatio: Float = 0.1f,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val request = remember(
+        topic.id,
+        topic.keyFramePath,
+        topic.bboxLeft,
+        topic.bboxTop,
+        topic.bboxRight,
+        topic.bboxBottom,
+        cropPaddingRatio
+    ) {
+        ImageRequest.Builder(context)
+            .data(topic.keyFramePath)
+            // bbox は元画像の絶対座標なので、縮小デコードせず元サイズで切り抜く
+            .size(Size.ORIGINAL)
+            .transformations(
+                BboxCropTransformation(
+                    bboxLeft = topic.bboxLeft,
+                    bboxTop = topic.bboxTop,
+                    bboxRight = topic.bboxRight,
+                    bboxBottom = topic.bboxBottom,
+                    paddingRatio = cropPaddingRatio
+                )
+            )
+            .build()
+    }
+
+    AsyncImage(
+        model = request,
+        contentDescription = topic.japaneseClassName,
+        modifier = modifier,
+        contentScale = ContentScale.Fit
+    )
+}
+
+/**
  * 各カード要素コンポーネント
  */
 @Composable
@@ -657,31 +703,6 @@ fun TopicCard(
         }
     }
 
-    // サムネイルはキーフレーム全体ではなく、bbox で切り抜いた画像を表示する
-    val context = LocalContext.current
-    val thumbnailRequest = remember(
-        topic.id,
-        topic.keyFramePath,
-        topic.bboxLeft,
-        topic.bboxTop,
-        topic.bboxRight,
-        topic.bboxBottom
-    ) {
-        ImageRequest.Builder(context)
-            .data(topic.keyFramePath)
-            // bbox は元画像の絶対座標なので、縮小デコードせず元サイズで切り抜く
-            .size(Size.ORIGINAL)
-            .transformations(
-                BboxCropTransformation(
-                    bboxLeft = topic.bboxLeft,
-                    bboxTop = topic.bboxTop,
-                    bboxRight = topic.bboxRight,
-                    bboxBottom = topic.bboxBottom
-                )
-            )
-            .build()
-    }
-
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth()
@@ -694,11 +715,9 @@ fun TopicCard(
                     // Fit で生じる余白は黒で埋める
                     .background(Color.Black)
             ) {
-                AsyncImage(
-                    model = thumbnailRequest,
-                    contentDescription = topic.japaneseClassName,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
+                BboxThumbnail(
+                    topic = topic,
+                    modifier = Modifier.fillMaxSize()
                 )
 
                 IconButton(

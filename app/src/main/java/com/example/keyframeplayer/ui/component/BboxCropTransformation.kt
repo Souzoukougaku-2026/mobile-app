@@ -12,27 +12,39 @@ import com.example.keyframeplayer.core.util.cropImage
  * リサイズや余白の黒埋めは行わない (表示側の ContentScale.Fit と背景色に任せる)。
  * bbox はキーフレーム画像に対する絶対ピクセル座標 (left, top, right, bottom) のため、
  * 呼び出し側のリクエストで元サイズのままデコードすること (Size.ORIGINAL 指定)。
- * DB の値が画像範囲から外れている場合に備え、切り抜き前に範囲内へ丸める。
+ *
+ * @param paddingRatio bbox を各辺に広げる割合 (0.1f なら幅・高さの10%ずつ外側へ)。
+ *                     広げた結果や DB の値が画像範囲から外れても、切り抜き前に
+ *                     範囲内へ丸められるので安全。
  */
 class BboxCropTransformation(
     private val bboxLeft: Int,
     private val bboxTop: Int,
     private val bboxRight: Int,
-    private val bboxBottom: Int
+    private val bboxBottom: Int,
+    private val paddingRatio: Float = 0f
 ) : Transformation {
 
-    // 同じキーフレームから複数の検出があってもキャッシュが混ざらないよう、bbox をキーに含める
+    // 同じキーフレームから複数の検出があってもキャッシュが混ざらないよう、bbox と拡張率をキーに含める
     override val cacheKey: String =
-        "BboxCropTransformation($bboxLeft,$bboxTop,$bboxRight,$bboxBottom)"
+        "BboxCropTransformation($bboxLeft,$bboxTop,$bboxRight,$bboxBottom,pad=$paddingRatio)"
 
     override suspend fun transform(input: Bitmap, size: Size): Bitmap {
         val startNs = System.nanoTime()
 
-        // bbox を画像範囲内へ丸める (幅・高さが最低 1px は残るようにする)
-        val left = bboxLeft.coerceIn(0, input.width - 1)
-        val top = bboxTop.coerceIn(0, input.height - 1)
-        val right = bboxRight.coerceIn(left + 1, input.width)
-        val bottom = bboxBottom.coerceIn(top + 1, input.height)
+        // bbox を paddingRatio の分だけ各辺へ広げる (左右は幅基準、上下は高さ基準)
+        val padX = ((bboxRight - bboxLeft) * paddingRatio).toInt()
+        val padY = ((bboxBottom - bboxTop) * paddingRatio).toInt()
+        val expandedLeft = bboxLeft - padX
+        val expandedTop = bboxTop - padY
+        val expandedRight = bboxRight + padX
+        val expandedBottom = bboxBottom + padY
+
+        // 拡張後の範囲を画像範囲内へ丸める (幅・高さが最低 1px は残るようにする)
+        val left = expandedLeft.coerceIn(0, input.width - 1)
+        val top = expandedTop.coerceIn(0, input.height - 1)
+        val right = expandedRight.coerceIn(left + 1, input.width)
+        val bottom = expandedBottom.coerceIn(top + 1, input.height)
 
         val cropped = input.cropImage(
             x = left,
