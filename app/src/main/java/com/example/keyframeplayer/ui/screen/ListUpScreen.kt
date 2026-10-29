@@ -565,12 +565,10 @@ fun MyTopBar(
     if (showRedoConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showRedoConfirmDialog = false },
-            title = { Text("検出データをすべて削除しますか？") },
+            title = { Text("やり直しますか？") },
             text = {
                 Text(
-                    "保存されている検出結果とキーフレーム画像はすべて削除され、元に戻すことはできません。\n" +
-                        "動画ファイル自体は削除されません。\n" +
-                        "削除後は、動画選択の画面からやり直しになります。"
+                    "削除してやり直すボタンを押すと、保存されている見つかった探し物の結果を削除して、最初の画面からやり直すことになります。\n" + "動画ファイル自体は削除されません。\n"
                 )
             },
             confirmButton = {
