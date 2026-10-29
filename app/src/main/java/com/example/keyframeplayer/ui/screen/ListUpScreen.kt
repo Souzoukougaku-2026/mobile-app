@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Size
@@ -336,7 +337,7 @@ fun MyTopBar(
         title = { Text("検出画像一覧") },
         actions = {
             IconButton(onClick = { onExpandedChange(true) }) {
-                Icon(Icons.Default.FilterAlt, contentDescription = "フィルター")
+                Icon(Icons.Default.FilterAlt, contentDescription = "並べ替えとフィルター")
             }
             // やり直しは専用ボタンとしてヘッダーの一番右に置く (確認ダイアログがあるため誤タップの心配はない)
             // アイコンだけでは伝わりにくいため、テキスト付きの Filled ボタン (primary 色) にする
@@ -362,7 +363,7 @@ fun MyTopBar(
                 when (currentMenuPage) {
                     MenuPage.MAIN -> {
                         Text(
-                            text = "ソート・フィルター",
+                            text = "並び替え・フィルター",
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
@@ -376,7 +377,7 @@ fun MyTopBar(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("ソート")
+                                    Text("並び替え")
                                     Text(
                                         text = selectedSortOption.label,
                                         style = MaterialTheme.typography.bodySmall,
@@ -430,7 +431,20 @@ fun MyTopBar(
 
                         // 4. 🐾 足跡（お気に入り）のみ
                         DropdownMenuItem(
-                            text = { Text(if (isLikedOnlyFilter) "お気に入り(足跡)のみ [ON]" else "お気に入り(足跡)のみ [OFF]") },
+                            text = {
+                                Row (
+                                    verticalAlignment = Alignment.CenterVertically
+                                ){
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_footprint_filled),
+                                        contentDescription = "足跡",
+                                        tint = Color(0xFFFF9800),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("つけたモノだけ")
+                                }
+                            },
                             trailingIcon = {
                                 if (isLikedOnlyFilter) {
                                     Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -438,7 +452,6 @@ fun MyTopBar(
                             },
                             onClick = {
                                 onLikedFilterToggled()
-                                onExpandedChange(false)
                             }
                         )
 
@@ -449,7 +462,6 @@ fun MyTopBar(
                             text = { Text("条件をクリア (すべて表示)", color = MaterialTheme.colorScheme.error) },
                             onClick = {
                                 onResetAllFilters()
-                                onExpandedChange(false)
                             }
                         )
                     }
@@ -470,7 +482,7 @@ fun MyTopBar(
                                 },
                                 onClick = {
                                     onSortOptionSelected(option)
-                                    onExpandedChange(false)
+                                    currentMenuPage = MenuPage.MAIN
                                 }
                             )
                         }
@@ -491,7 +503,7 @@ fun MyTopBar(
                             },
                             onClick = {
                                 onClassFilterSelected(null)
-                                onExpandedChange(false)
+                                currentMenuPage = MenuPage.MAIN
                             }
                         )
                         availableClasses.forEach { className ->
@@ -504,7 +516,7 @@ fun MyTopBar(
                                 },
                                 onClick = {
                                     onClassFilterSelected(className)
-                                    onExpandedChange(false)
+                                    currentMenuPage = MenuPage.MAIN
                                 }
                             )
                         }
@@ -525,7 +537,7 @@ fun MyTopBar(
                             },
                             onClick = {
                                 onColorFilterSelected(null)
-                                onExpandedChange(false)
+                                currentMenuPage = MenuPage.MAIN
                             }
                         )
                         availableColors.forEach { color ->
@@ -551,7 +563,7 @@ fun MyTopBar(
                                 },
                                 onClick = {
                                     onColorFilterSelected(color)
-                                    onExpandedChange(false)
+                                    currentMenuPage = MenuPage.MAIN
                                 }
                             )
                         }
