@@ -228,9 +228,12 @@ fun AppNavigation(
                 onNavigateToDetail = { image ->
                     navController.navigate("movie?cropImageId=${image.id}&realTime=${image.realTime}")
                 },
-                onNavigateToDirectory = {
-                    navController.navigate("directory_management") {
-                        popUpTo("list") { inclusive = true }
+                onRedoDetection = {
+                    // 検出データを全クリアしてから、動画選択画面へ戻る (最初からやり直す)
+                    listViewModel.clearAllData {
+                        navController.navigate("directory_management") {
+                            popUpTo("list") { inclusive = true }
+                        }
                     }
                 }
             )
@@ -252,7 +255,12 @@ fun AppNavigation(
             val movieViewModel: MovieViewModel = hiltViewModel()
             MovieRoute(
                 viewModel = movieViewModel,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = {
+                    // 戻る連打でルート (リスト) まで pop して画面が真っ白になるのを防ぐ
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
             )
         }
     }

@@ -75,6 +75,16 @@ class ListViewModel @Inject constructor(
     }
 
     /**
+     * 保存済みの検出データをすべて削除し、完了後に onCleared を呼ぶ (最初からやり直す用)。
+     */
+    fun clearAllData(onCleared: () -> Unit) {
+        viewModelScope.launch {
+            progressRepository.clearAllPersistedData()
+            onCleared()
+        }
+    }
+
+    /**
      * 取得された検出結果（外部から渡された引数）をデータベースへ登録します。
      * この関数はデータの出元を問わず、受け取ったデータを保存する責務のみを持ちます。
      */
