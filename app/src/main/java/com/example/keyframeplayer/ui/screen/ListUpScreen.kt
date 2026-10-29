@@ -21,15 +21,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Size
 import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.core.domain.model.japaneseClassName
 import com.example.keyframeplayer.core.domain.model.toJapaneseClassName
+import com.example.keyframeplayer.ui.component.BboxCropTransformation
 import com.example.keyframeplayer.ui.component.ProcessingProgressBar
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -636,6 +640,52 @@ fun TopicGrid(
 }
 
 /**
+ * bbox で切り抜いたサムネイル画像。
+ * キーフレーム全体ではなく検出範囲を表示し、余白は背面 (黒背景) に任せる。
+ *
+ * @param cropPaddingRatio 切り抜き範囲を各辺に広げる割合 (0.1f = 幅・高さの10%ずつ)
+ */
+@Composable
+fun BboxThumbnail(
+    topic: CropImage,
+    cropPaddingRatio: Float = 0.2f,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val request = remember(
+        topic.id,
+        topic.keyFramePath,
+        topic.bboxLeft,
+        topic.bboxTop,
+        topic.bboxRight,
+        topic.bboxBottom,
+        cropPaddingRatio
+    ) {
+        ImageRequest.Builder(context)
+            .data(topic.keyFramePath)
+            // bbox は元画像の絶対座標なので、縮小デコードせず元サイズで切り抜く
+            .size(Size.ORIGINAL)
+            .transformations(
+                BboxCropTransformation(
+                    bboxLeft = topic.bboxLeft,
+                    bboxTop = topic.bboxTop,
+                    bboxRight = topic.bboxRight,
+                    bboxBottom = topic.bboxBottom,
+                    paddingRatio = cropPaddingRatio
+                )
+            )
+            .build()
+    }
+
+    AsyncImage(
+        model = request,
+        contentDescription = topic.japaneseClassName,
+        modifier = modifier,
+        contentScale = ContentScale.Fit
+    )
+}
+
+/**
  * 各カード要素コンポーネント
  */
 @Composable
@@ -662,12 +712,12 @@ fun TopicCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
+                    // Fit で生じる余白は黒で埋める
+                    .background(Color.Black)
             ) {
-                AsyncImage(
-                    model = topic.keyFramePath,
-                    contentDescription = topic.japaneseClassName,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                BboxThumbnail(
+                    topic = topic,
+                    modifier = Modifier.fillMaxSize()
                 )
 
                 IconButton(
