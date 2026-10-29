@@ -21,15 +21,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.keyframeplayer.core.data.repository.ProcessingProgressState
 import com.example.keyframeplayer.core.domain.model.CropImage
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.core.domain.model.japaneseClassName
 import com.example.keyframeplayer.core.domain.model.toJapaneseClassName
+import com.example.keyframeplayer.ui.component.BboxCropTransformation
 import com.example.keyframeplayer.ui.component.ProcessingProgressBar
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -653,6 +656,29 @@ fun TopicCard(
         }
     }
 
+    // サムネイルはキーフレーム全体ではなく、bbox で切り抜いた画像を表示する
+    val context = LocalContext.current
+    val thumbnailRequest = remember(
+        topic.id,
+        topic.keyFramePath,
+        topic.bboxLeft,
+        topic.bboxTop,
+        topic.bboxRight,
+        topic.bboxBottom
+    ) {
+        ImageRequest.Builder(context)
+            .data(topic.keyFramePath)
+            .transformations(
+                BboxCropTransformation(
+                    bboxLeft = topic.bboxLeft,
+                    bboxTop = topic.bboxTop,
+                    bboxRight = topic.bboxRight,
+                    bboxBottom = topic.bboxBottom
+                )
+            )
+            .build()
+    }
+
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth()
@@ -664,10 +690,10 @@ fun TopicCard(
                     .aspectRatio(1f)
             ) {
                 AsyncImage(
-                    model = topic.keyFramePath,
+                    model = thumbnailRequest,
                     contentDescription = topic.japaneseClassName,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Fit
                 )
 
                 IconButton(
