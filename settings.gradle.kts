@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "KeyframePlayer"
+rootProject.name = "mikke"
 include(":app")
  
