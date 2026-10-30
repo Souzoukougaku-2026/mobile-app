@@ -16,7 +16,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Flip
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -172,19 +171,6 @@ fun BottomInfoArea(
                         )
                     }
 
-                    // ▶️ 試聴 (再生位置移動) ボタン
-                    IconButton(
-                        onClick = {
-                            onSeekToKeyframe(currentKeyframe)
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "動画の該当位置へ移動",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
                     // ▶ 右矢印ボタン (次のデータ): カードを切り替えたら再生位置も合わせる
                     IconButton(
                         onClick = {
@@ -233,33 +219,6 @@ fun BottomInfoArea(
                             initialBottomRight = Offset(currentKeyframe.bboxRight.toFloat(), currentKeyframe.bboxBottom.toFloat()),
                             modifier = Modifier.fillMaxSize()
                         )
-
-                        // 左上: クラス名・スコアのバッジ
-                        Surface(
-                            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = currentKeyframe.japaneseClassName,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.inverseOnSurface,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Score: %.2f".format(currentKeyframe.score),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
