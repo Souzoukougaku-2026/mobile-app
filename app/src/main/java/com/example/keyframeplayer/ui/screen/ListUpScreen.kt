@@ -292,7 +292,7 @@ fun PaginationBar(
                 onClick = onNextClick,
                 enabled = currentPage < totalPages - 1
             ) {
-                Text("Next")
+                Text("次へ")
                 Spacer(modifier = Modifier.width(4.dp))
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "次へ")
             }
