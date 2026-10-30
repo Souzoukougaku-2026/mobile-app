@@ -20,30 +20,30 @@ import com.example.keyframeplayer.core.domain.model.japaneseClassName
  */
 @Composable
 fun BboxThumbnail(
-    cropImage: CropImage,
+    detection: CropImage,
     cropPaddingRatio: Float = 0.2f,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val request = remember(
-        cropImage.id,
-        cropImage.keyFramePath,
-        cropImage.bboxLeft,
-        cropImage.bboxTop,
-        cropImage.bboxRight,
-        cropImage.bboxBottom,
+        detection.id,
+        detection.keyFramePath,
+        detection.bboxLeft,
+        detection.bboxTop,
+        detection.bboxRight,
+        detection.bboxBottom,
         cropPaddingRatio
     ) {
         ImageRequest.Builder(context)
-            .data(cropImage.keyFramePath)
+            .data(detection.keyFramePath)
             // bbox は元画像の絶対座標なので、縮小デコードせず元サイズで切り抜く
             .size(Size.ORIGINAL)
             .transformations(
                 BboxCropTransformation(
-                    bboxLeft = cropImage.bboxLeft,
-                    bboxTop = cropImage.bboxTop,
-                    bboxRight = cropImage.bboxRight,
-                    bboxBottom = cropImage.bboxBottom,
+                    bboxLeft = detection.bboxLeft,
+                    bboxTop = detection.bboxTop,
+                    bboxRight = detection.bboxRight,
+                    bboxBottom = detection.bboxBottom,
                     paddingRatio = cropPaddingRatio
                 )
             )
@@ -52,7 +52,7 @@ fun BboxThumbnail(
 
     AsyncImage(
         model = request,
-        contentDescription = cropImage.japaneseClassName,
+        contentDescription = detection.japaneseClassName,
         modifier = modifier,
         contentScale = ContentScale.Fit
     )

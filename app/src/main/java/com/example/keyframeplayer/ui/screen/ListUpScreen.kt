@@ -137,7 +137,7 @@ fun ListUpScreen(
         maxOf(1, ceil(filteredAndSortedItems.size / itemsPerPage.toDouble()).toInt())
     }
 
-    val pagedCropImages = remember(filteredAndSortedItems, currentPage) {
+    val pagedDetections = remember(filteredAndSortedItems, currentPage) {
         filteredAndSortedItems.drop(currentPage * itemsPerPage).take(itemsPerPage)
     }
 
@@ -231,8 +231,8 @@ fun ListUpScreen(
                     }
                 }
             } else {
-                CropImageGrid(
-                    cropImages = pagedCropImages,
+                DetectionGrid(
+                    detections = pagedDetections,
                     onToggleLiked = onToggleLiked,
                     onNavigateToDetail = onNavigateToDetail,
                     modifier = Modifier.padding(
@@ -605,8 +605,8 @@ fun MyTopBar(
  * グリッド表示コンポーネント
  */
 @Composable
-fun CropImageGrid(
-    cropImages: List<CropImage>,
+fun DetectionGrid(
+    detections: List<CropImage>,
     onToggleLiked: (UUID, Boolean) -> Unit,
     onNavigateToDetail: (CropImage) -> Unit,
     modifier: Modifier = Modifier
@@ -618,12 +618,12 @@ fun CropImageGrid(
         modifier = modifier
     ) {
         items(
-            items = cropImages,
+            items = detections,
             key = { it.id }
-        ) { cropImage ->
-            CropImageCard(
-                cropImage = cropImage,
-                onClick = { onNavigateToDetail(cropImage) },
+        ) { detection ->
+            DetectionCard(
+                detection = detection,
+                onClick = { onNavigateToDetail(detection) },
                 onToggleLiked = onToggleLiked
             )
         }
@@ -634,17 +634,17 @@ fun CropImageGrid(
  * 各カード要素コンポーネント
  */
 @Composable
-fun CropImageCard(
-    cropImage: CropImage,
+fun DetectionCard(
+    detection: CropImage,
     onClick: () -> Unit,
     onToggleLiked: (UUID, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val formattedDate = remember(cropImage.realTime, cropImage.fileTime) {
-        if (cropImage.realTime > 0L) {
-            SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(cropImage.realTime))
+    val formattedDate = remember(detection.realTime, detection.fileTime) {
+        if (detection.realTime > 0L) {
+            SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(detection.realTime))
         } else {
-            "${cropImage.fileTime}s"
+            "${detection.fileTime}s"
         }
     }
 
@@ -661,12 +661,12 @@ fun CropImageCard(
                     .background(Color.Black)
             ) {
                 BboxThumbnail(
-                    cropImage = cropImage,
+                    detection = detection,
                     modifier = Modifier.fillMaxSize()
                 )
 
                 IconButton(
-                    onClick = { onToggleLiked(cropImage.id, !cropImage.isLiked) },
+                    onClick = { onToggleLiked(detection.id, !detection.isLiked) },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(8.dp)
@@ -674,9 +674,9 @@ fun CropImageCard(
                         .size(32.dp)
                 ) {
                     Icon(
-                        painter = painterResource(if (cropImage.isLiked) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
+                        painter = painterResource(if (detection.isLiked) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
                         contentDescription = "Favorite",
-                        tint = if (cropImage.isLiked) Color(0xFFFF9800) else Color.White,
+                        tint = if (detection.isLiked) Color(0xFFFF9800) else Color.White,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -689,7 +689,7 @@ fun CropImageCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = cropImage.japaneseClassName,
+                        text = detection.japaneseClassName,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -698,14 +698,14 @@ fun CropImageCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         painter = painterResource(R.drawable.ic_footprint_filled),
-                        contentDescription = cropImage.color.displayName,
-                        tint = cropImage.color.composeColor,
+                        contentDescription = detection.color.displayName,
+                        tint = detection.color.composeColor,
                         modifier = Modifier
                             .size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = cropImage.color.displayName,
+                        text = detection.color.displayName,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1

@@ -217,7 +217,7 @@ fun BottomInfoArea(
                             .background(Color.Black)
                     ) {
                         BboxThumbnail(
-                            cropImage = currentKeyframe,
+                            detection = currentKeyframe,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
