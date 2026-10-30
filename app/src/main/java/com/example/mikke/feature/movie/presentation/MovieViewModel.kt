@@ -1,0 +1,421 @@
+package com.example.mikke.feature.movie.presentation
+
+import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.mikke.core.data.database.entity.VideoEntity
+import com.example.mikke.core.data.repository.ProcessingProgressRepository
+import com.example.mikke.core.data.repository.ProcessingProgressState
+import com.example.mikke.core.domain.model.CropImage
+import com.example.mikke.core.domain.model.ImageColor
+import com.example.mikke.feature.movie.domain.MovieRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.util.UUID
+import javax.inject.Inject
+
+@HiltViewModel
+class MovieViewModel @Inject constructor(
+    private val repository: MovieRepository,
+    private val progressRepository: ProcessingProgressRepository,
+    savedStateHandle: SavedStateHandle
+) : ViewModel() {
+
+    val processingProgressState: StateFlow<ProcessingProgressState> = progressRepository.progressState
+
+    private val cropImageIdString: String? = savedStateHandle.get<String>("cropImageId")
+    private val initialRealTime: Long = savedStateHandle.get<Long>("realTime") ?: -1L
+
+    private val _uiState = MutableStateFlow(MovieUiState())
+    val uiState: StateFlow<MovieUiState> = _uiState.asStateFlow()
+
+    private var isInitializedFromList = false
+    private var lastSeekTimestamp = 0L
+
+    init {
+        fetchStoredKeyframes()
+        fetchVideosAndInitialize()
+    }
+
+    private fun fetchVideosAndInitialize() {
+        viewModelScope.launch {
+            repository.ensureVideoEntitiesExist()
+
+            repository.getVideosOrdered().collect { videos ->
+                if (videos.isEmpty()) {
+                    return@collect
+                }
+
+                val offsets = mutableListOf<Long>()
+                var currentSum = 0L
+                for (v in videos) {
+                    offsets.add(currentSum)
+                    currentSum += v.durationMs
+                }
+                val totalMs = currentSum
+                val totalSec = (totalMs / 1000f).coerceAtLeast(1f)
+
+                updateRealTimeBounds(videos, _uiState.value.keyframes)
+
+                if (!isInitializedFromList) {
+                    isInitializedFromList = true
+                    initializePlaybackPosition(videos, offsets, totalSec)
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            videos = videos,
+                            videoOffsetsMs = offsets,
+                            totalDurationSeconds = totalSec
+                        )
+                    }
+                }
+                recalculateGraphBars()
+            }
+        }
+    }
+
+    private suspend fun initializePlaybackPosition(
+        videos: List<VideoEntity>,
+        offsets: List<Long>,
+        totalSec: Float
+    ) {
+        var targetRealTime = initialRealTime
+        var targetMoviePath: String? = null
+        var targetFileTimeMs: Long? = null
+
+        if (cropImageIdString != null) {
+            try {
+                val cropImage = repository.getCropImageById(UUID.fromString(cropImageIdString))
+                if (cropImage != null) {
+                    targetRealTime = cropImage.realTime
+                    val keyFrame = repository.getKeyFrameById(cropImage.idKeyFrame)
+                    if (keyFrame != null) {
+                        targetMoviePath = keyFrame.moviePath
+                        targetFileTimeMs = keyFrame.fileTime / 1000L
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        var targetIndex = -1
+        var posInVideoMs = 0L
+
+        // 1. moviePath と fileTimeMs による正確なマッチング
+        if (targetMoviePath != null) {
+            targetIndex = videos.indexOfFirst { it.uri == targetMoviePath }
+            if (targetIndex != -1 && targetFileTimeMs != null) {
+                posInVideoMs = targetFileTimeMs.coerceIn(0L, videos[targetIndex].durationMs)
+            }
+        }
+
+        // 2. もし moviePath で一致しない場合、realTime によるマッピング
+        if (targetIndex == -1 && targetRealTime > 0L) {
+            targetIndex = videos.indexOfFirst {
+                targetRealTime >= it.realStartTime && targetRealTime <= it.realEndTime
+            }
+            if (targetIndex == -1) {
+                targetIndex = videos.indexOfMinByOrNull { kotlin.math.abs(it.realStartTime - targetRealTime) } ?: 0
+            }
+            val targetVideo = videos[targetIndex]
+            posInVideoMs = (targetRealTime - targetVideo.startTimeTextMs()).coerceIn(0L, targetVideo.durationMs)
+        }
+
+        if (targetIndex == -1) {
+            targetIndex = 0
+            posInVideoMs = 0L
+        }
+
+        val targetVideo = videos[targetIndex]
+        val calculatedRealTime = if (targetRealTime > 0L) targetRealTime else (targetVideo.realStartTime + posInVideoMs)
+        val overallMs = offsets[targetIndex] + posInVideoMs
+        val overallSec = (overallMs / 1000f).coerceIn(0f, totalSec)
+
+        lastSeekTimestamp = System.currentTimeMillis()
+
+        _uiState.update {
+            it.copy(
+                videos = videos,
+                videoOffsetsMs = offsets,
+                totalDurationSeconds = totalSec,
+                currentTime = overallSec,
+                initialMediaItemIndex = targetIndex,
+                initialPositionMs = posInVideoMs,
+                currentRealTimeMs = calculatedRealTime,
+                seekTarget = SeekTarget(targetIndex, posInVideoMs)
+            )
+        }
+    }
+
+    private fun VideoEntity.startTimeTextMs(): Long = realStartTime
+
+    private fun updateRealTimeBounds(videos: List<VideoEntity>, keyframes: List<CropImage>) {
+        val validVideoStarts = videos.map { it.realStartTime }.filter { it > 0L }
+        val validVideoEnds = videos.map { it.realEndTime }.filter { it > 0L }
+
+        val minVideo = validVideoStarts.minOrNull()
+        val maxVideo = validVideoEnds.maxOrNull()
+
+        val minReal: Long
+        val maxReal: Long
+
+        if (minVideo != null && maxVideo != null && maxVideo >= minVideo) {
+            minReal = minVideo
+            maxReal = maxVideo
+        } else {
+            val validKeyframeTimes = keyframes.map { it.realTime }.filter { it > 0L }
+            val minKf = validKeyframeTimes.minOrNull()
+            val maxKf = validKeyframeTimes.maxOrNull()
+
+            if (minKf != null && maxKf != null && maxKf >= minKf) {
+                minReal = minKf
+                maxReal = maxKf
+            } else {
+                val now = System.currentTimeMillis()
+                minReal = now
+                maxReal = now + (_uiState.value.totalDurationSeconds * 1000f).toLong().coerceAtLeast(1000L)
+            }
+        }
+
+        _uiState.update {
+            it.copy(
+                minRealTimeMs = minReal,
+                maxRealTimeMs = maxReal
+            )
+        }
+    }
+
+    private fun fetchStoredKeyframes() {
+        viewModelScope.launch {
+            repository.getStoredKeyframes().collect { keyframes ->
+                val availableClasses = keyframes.map { it.className }.distinct().sorted()
+                _uiState.update {
+                    it.copy(
+                        keyframes = keyframes,
+                        availableClasses = availableClasses
+                    )
+                }
+                updateRealTimeBounds(_uiState.value.videos, keyframes)
+                recalculateGraphBars()
+            }
+        }
+    }
+
+    fun onTimeScaleSelected(timeScale: TimeScale) {
+        _uiState.update { it.copy(selectedTimeScale = timeScale) }
+        recalculateGraphBars()
+    }
+
+    fun onClassFilterSelected(className: String?) {
+        _uiState.update { it.copy(selectedClassFilter = className) }
+        recalculateGraphBars()
+    }
+
+    fun onColorFilterSelected(color: ImageColor?) {
+        _uiState.update { it.copy(selectedColorFilter = color) }
+        recalculateGraphBars()
+    }
+
+    fun onLikedFilterToggled() {
+        _uiState.update { it.copy(isLikedFilterOnly = !it.isLikedFilterOnly) }
+        recalculateGraphBars()
+    }
+
+    fun onKeyframeLikedStateChanged(id: UUID, isLiked: Boolean) {
+        viewModelScope.launch {
+            repository.updateCropImageLiked(id, isLiked)
+        }
+    }
+
+    private fun recalculateGraphBars() {
+        val state = _uiState.value
+        val keyframes = state.keyframes
+        val timeScale = state.selectedTimeScale
+        val classFilter = state.selectedClassFilter
+        val colorFilter = state.selectedColorFilter
+        val likedFilterOnly = state.isLikedFilterOnly
+
+        val minRealTimeMs = state.minRealTimeMs
+        val scaleWindowMs = timeScale.windowMs
+        val totalRealDurationMs = maxOf(state.totalRealDurationMs, scaleWindowMs)
+
+        val filtered = keyframes.filter { item ->
+            (classFilter == null || item.className == classFilter) &&
+            (colorFilter == null || item.color == colorFilter) &&
+            (!likedFilterOnly || item.isLiked)
+        }
+
+        // 超・極小シンプルなバケット計算: 1画面窓(scaleWindowMs)を90分割
+        val bucketMs = (scaleWindowMs.toDouble() / 90.0).coerceAtLeast(1.0)
+        val totalBarCount = (totalRealDurationMs.toDouble() / bucketMs).toInt().coerceAtLeast(90)
+        val counts = IntArray(totalBarCount)
+
+        for (item in filtered) {
+            val diffMs = (item.realTime - minRealTimeMs).toDouble()
+            if (diffMs >= 0.0) {
+                val index = (diffMs / bucketMs).toInt()
+                if (index in 0 until totalBarCount) {
+                    counts[index]++
+                }
+            }
+        }
+
+        val countsList = counts.toList()
+        val maxCount = counts.maxOrNull()?.coerceAtLeast(1) ?: 1
+
+        _uiState.update {
+            it.copy(
+                graphBarCounts = countsList,
+                maxBarCount = maxCount
+            )
+        }
+    }
+
+    fun onVideoSelected(uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(videoUri = uri, isLoading = true) }
+
+            val result = repository.processVideo(uri)
+
+            result.onFailure { error ->
+                _uiState.update { it.copy(error = error.message) }
+            }
+
+            _uiState.update { it.copy(isLoading = false) }
+        }
+    }
+
+    fun onSkipBy(deltaSeconds: Float) {
+        val currentSec = _uiState.value.currentTime
+        val totalSec = _uiState.value.totalDurationSeconds
+        val targetSec = (currentSec + deltaSeconds).coerceIn(0f, totalSec)
+        onTimeChanged(targetSec)
+    }
+
+    fun onTimeChanged(newTime: Float) {
+        lastSeekTimestamp = System.currentTimeMillis()
+        val totalSec = _uiState.value.totalDurationSeconds
+        val clampedTime = newTime.coerceIn(0f, totalSec)
+        val videos = _uiState.value.videos
+        val offsets = _uiState.value.videoOffsetsMs
+
+        val (index, posMs, realTimeMs) = mapOverallTimeToVideoPosition(clampedTime, videos, offsets)
+
+        _uiState.update {
+            it.copy(
+                currentTime = clampedTime,
+                currentRealTimeMs = realTimeMs,
+                seekTarget = SeekTarget(index, posMs)
+            )
+        }
+    }
+
+    fun onPlayerPositionUpdated(mediaItemIndex: Int, positionMs: Long) {
+        if (System.currentTimeMillis() - lastSeekTimestamp < 800L) {
+            return
+        }
+
+        val videos = _uiState.value.videos
+        val offsets = _uiState.value.videoOffsetsMs
+        if (videos.isEmpty() || mediaItemIndex !in videos.indices) return
+
+        val offsetMs = offsets.getOrNull(mediaItemIndex) ?: 0L
+        val overallMs = offsetMs + positionMs
+        val overallSec = (overallMs / 1000f).coerceIn(0f, _uiState.value.totalDurationSeconds)
+
+        val targetVideo = videos[mediaItemIndex]
+        val realTimeMs = targetVideo.realStartTime + positionMs.coerceIn(0L, targetVideo.durationMs)
+
+        _uiState.update {
+            it.copy(
+                currentTime = overallSec,
+                currentRealTimeMs = realTimeMs
+            )
+        }
+    }
+
+    fun onProgressTapped(progress: Float) {
+        val state = _uiState.value
+        val minRealTimeMs = state.minRealTimeMs
+        val scaleWindowMs = state.selectedTimeScale.windowMs
+        val spanMs = maxOf(state.totalRealDurationMs, scaleWindowMs)
+        val targetRealTimeMs = minRealTimeMs + (progress.coerceIn(0f, 1f) * spanMs).toLong()
+
+        val videos = state.videos
+        val offsets = state.videoOffsetsMs
+        if (videos.isEmpty()) {
+            _uiState.update { it.copy(currentRealTimeMs = targetRealTimeMs) }
+            return
+        }
+
+        var index = videos.indexOfFirst { targetRealTimeMs >= it.realStartTime && targetRealTimeMs <= it.realEndTime }
+        if (index == -1) {
+            index = videos.indexOfMinByOrNull {
+                minOf(
+                    kotlin.math.abs(it.realStartTime - targetRealTimeMs),
+                    kotlin.math.abs(it.realEndTime - targetRealTimeMs)
+                )
+            } ?: 0
+        }
+
+        val targetVideo = videos[index]
+        // 動画の無いエリアが指定された場合は、最寄りの動画端に寄せた時刻を実効時刻とする。
+        // 再生位置 (posMs) と現在時刻 (currentRealTimeMs) が一致するよう、両方この時刻から求める
+        val effectiveRealTimeMs = targetRealTimeMs.coerceIn(targetVideo.realStartTime, targetVideo.realEndTime)
+        val posMs = (effectiveRealTimeMs - targetVideo.realStartTime).coerceIn(0L, targetVideo.durationMs)
+        val overallMs = (offsets.getOrNull(index) ?: 0L) + posMs
+        val overallSec = (overallMs / 1000f).coerceIn(0f, state.totalDurationSeconds)
+
+        lastSeekTimestamp = System.currentTimeMillis()
+
+        _uiState.update {
+            it.copy(
+                currentTime = overallSec,
+                currentRealTimeMs = effectiveRealTimeMs,
+                seekTarget = SeekTarget(index, posMs)
+            )
+        }
+    }
+
+    private fun mapOverallTimeToVideoPosition(
+        timeSec: Float,
+        videos: List<VideoEntity>,
+        offsets: List<Long>
+    ): Triple<Int, Long, Long> {
+        if (videos.isEmpty() || offsets.isEmpty()) {
+            return Triple(0, 0L, 0L)
+        }
+        val targetMs = (timeSec * 1000f).toLong()
+
+        var index = offsets.indexOfLast { targetMs >= it }
+        if (index == -1) index = 0
+        if (index >= videos.size) index = videos.lastIndex
+
+        val offset = offsets[index]
+        val video = videos[index]
+        val posMs = (targetMs - offset).coerceIn(0L, video.durationMs)
+        val realTimeMs = video.realStartTime + posMs
+
+        return Triple(index, posMs, realTimeMs)
+    }
+
+    private inline fun <T> List<T>.indexOfMinByOrNull(selector: (T) -> Long): Int? {
+        if (isEmpty()) return null
+        var minIdx = 0
+        var minValue = selector(this[0])
+        for (i in 1 until size) {
+            val v = selector(this[i])
+            if (v < minValue) {
+                minValue = v
+                minIdx = i
+            }
+        }
+        return minIdx
+    }
+}

@@ -1,0 +1,246 @@
+package com.example.mikke
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import com.example.mikke.core.data.database.AppDatabase
+import com.example.mikke.feature.list.presentation.ListViewModel
+import com.example.mikke.feature.movie.presentation.MovieRoute
+import com.example.mikke.feature.movie.presentation.MovieViewModel
+import com.example.mikke.ui.screen.DirectoryManagementScreen
+import com.example.mikke.ui.screen.ListUpScreen
+import com.example.mikke.ui.theme.MikkeTheme
+import com.example.mikke.ui.viewmodel.ImageRecognitionViewModel
+import com.example.mikke.ui.viewmodel.VideoManagementViewModel
+import com.example.mikke.util.VideoUtils
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.File
+import javax.inject.Inject
+
+@AndroidEntryPoint
+class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var appDatabase: AppDatabase
+
+    // ViewModelの取得（状態とロジックの保持）
+    private val viewModel: VideoManagementViewModel by viewModels()
+
+
+    // 1秒ごとに権限状態をチェックするバックグラウンド処理の設定
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val checkStatusRunnable = object : Runnable {
+        override fun run() {
+            // 1. 永続化されたURIを取得
+            val persistedUri = viewModel.selectedUri.value
+                ?: contentResolver.persistedUriPermissions.filter { android.provider.DocumentsContract.isTreeUri(it.uri) }.firstOrNull()?.uri
+
+            // 2. アクセス可否をチェック
+            val pickedUri = persistedUri?.takeIf { VideoUtils.checkAccess(this@MainActivity, it) }
+            viewModel.onDirectoryPicked(pickedUri)
+            mainHandler.postDelayed(this, 1000)
+        }
+    }
+
+    // OSのフォルダ（ディレクトリ）選択画面を開き、選択結果と権限を受け取るシステム
+    private val pickDirLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri: Uri? ->
+        if (treeUri != null) {
+            val contentResolver = contentResolver
+            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+
+            // 過去に取得した古い永続権限があれば一度解放する
+            contentResolver.persistedUriPermissions.forEach {
+                contentResolver.releasePersistableUriPermission(it.uri, takeFlags)
+            }
+
+            // 新しく選択されたフォルダのアクセス権限を永続化（アプリ再起動後も有効化）
+            contentResolver.takePersistableUriPermission(treeUri, takeFlags)
+            viewModel.onDirectoryPicked(treeUri)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // DB 保持のためアプリ起動時の自動クリアは無効化 (必要に応じてコメント解除)
+        // clearAppData()
+
+        setContent {
+            MikkeTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    AppNavigation(
+                        videoViewModel = viewModel,
+                        onChooseClick = { pickDirLauncher.launch(null) }
+                    )
+                }
+            }
+        }
+    }
+
+    // アプリが画面に表示されたら、1秒ごとのアクセス権限チェックを開始
+    override fun onResume() {
+        super.onResume()
+        mainHandler.post(checkStatusRunnable)
+    }
+
+    // アプリが裏に隠れたら、バッテリー消費を抑えるためにチェックを停止
+    override fun onPause() {
+        super.onPause()
+        mainHandler.removeCallbacks(checkStatusRunnable)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // clearAppData()
+    }
+
+    private fun clearAppData() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // DB (CropImage, KeyFrame, Video) の全データをクリア
+                appDatabase.clearAllData()
+
+                // 画像保存フォルダ内のファイルを全削除
+                val imageDir = File(filesDir, "images")
+                if (imageDir.exists() && imageDir.isDirectory) {
+                    imageDir.listFiles()?.forEach { file ->
+                        if (file.isFile) {
+                            file.delete()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+}
+
+@Composable
+fun AppNavigation(
+    videoViewModel: VideoManagementViewModel,
+    onChooseClick: () -> Unit
+) {
+    val navController = rememberNavController()
+    val recognitionViewModel: ImageRecognitionViewModel = hiltViewModel()
+    val progressState by recognitionViewModel.progressState.collectAsStateWithLifecycle()
+
+    var startDestination by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val isProcessing = progressState.isProcessing
+        val hasData = recognitionViewModel.hasPersistedData()
+
+        val dest = when {
+            // 1. 処理中 (フェーズを問わない) または 過去に保存されたDBデータが存在する -> リスト表示画面へ
+            //    進捗はリスト画面のトップバー下のバーで表示されるため、専用のローディング画面は使わない
+            isProcessing || hasData -> "list"
+            // 2. データが存在しない初期状態 -> 動画選択画面へ
+            else -> "directory_management"
+        }
+        startDestination = dest
+    }
+
+    val currentStartDest = startDestination ?: return
+
+    NavHost(
+        navController = navController,
+        startDestination = currentStartDest,
+    ) {
+        composable("directory_management") {
+            val currentUri by videoViewModel.selectedUri.collectAsState()
+            val isAccessible by videoViewModel.isAccessible.collectAsState()
+            val videoInfos by videoViewModel.videoInfos.collectAsState()
+            val isLoading by videoViewModel.isLoading.collectAsState()
+
+            DirectoryManagementScreen(
+                currentUri = currentUri?.toString() ?: "None",
+                isAccessible = isAccessible,
+                videoInfos = videoInfos,
+                isLoading = isLoading,
+                onChooseClick = onChooseClick,
+                onProcessingFinished = {
+                    navController.navigate("list") {
+                        popUpTo("directory_management") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("list") {
+            val listViewModel: ListViewModel = hiltViewModel()
+            val uiState by listViewModel.uiState.collectAsStateWithLifecycle()
+            val processingState by listViewModel.processingProgressState.collectAsStateWithLifecycle()
+
+            ListUpScreen(
+                items = uiState.items,
+                processingProgressState = processingState,
+                onSortByDate = { isAsc -> listViewModel.setSortOrder(isAsc) },
+                onToggleLiked = { id, isLiked -> listViewModel.toggleLiked(id, isLiked) },
+                onNavigateToDetail = { image ->
+                    navController.navigate("movie?cropImageId=${image.id}&realTime=${image.realTime}")
+                },
+                onRedoDetection = {
+                    // 検出データを全クリアしてから、動画選択画面へ戻る (最初からやり直す)
+                    listViewModel.clearAllData {
+                        navController.navigate("directory_management") {
+                            popUpTo("list") { inclusive = true }
+                        }
+                    }
+                }
+            )
+        }
+        composable(
+            route = "movie?cropImageId={cropImageId}&realTime={realTime}",
+            arguments = listOf(
+                navArgument("cropImageId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("realTime") {
+                    type = NavType.LongType
+                    defaultValue = -1L
+                }
+            )
+        ) {
+            val movieViewModel: MovieViewModel = hiltViewModel()
+            MovieRoute(
+                viewModel = movieViewModel,
+                onNavigateBack = {
+                    // 戻る連打でルート (リスト) まで pop して画面が真っ白になるのを防ぐ
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
+    }
+}

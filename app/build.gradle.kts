@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.keyframeplayer"
+    namespace = "com.example.mikke"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.keyframeplayer"
+        applicationId = "com.example.mikke"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

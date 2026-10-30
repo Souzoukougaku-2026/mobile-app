@@ -1,0 +1,407 @@
+package com.example.mikke.ui.screen
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.mikke.ui.viewmodel.ImageRecognitionViewModel
+import com.example.mikke.util.VideoInfo
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DirectoryManagementScreen(
+    currentUri: String,
+    isAccessible: Boolean,
+    videoInfos: List<VideoInfo>,
+    isLoading: Boolean,
+    onChooseClick: () -> Unit,
+    onProcessingFinished: () -> Unit
+) {
+    val keyFrameViewModel: ImageRecognitionViewModel = hiltViewModel()
+
+    // 処理開始ボタンの二重押し防止 (開始処理は非同期にフラグが立つため、ローカルでも抑止する)
+    var hasStartedProcessing by remember { mutableStateOf(false) }
+
+    var showBottomSheet by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+
+    // 選択された動画を保持
+    var selectedStartVideo by remember { mutableStateOf<VideoInfo?>(null) }
+    var selectedEndVideo by remember { mutableStateOf<VideoInfo?>(null) }
+
+    var startMenuExpanded by remember { mutableStateOf(false) }
+    var endMenuExpanded by remember { mutableStateOf(false) }
+
+    // 範囲未選択で「決定」を押したときの、ボトムシート内のエラー表示
+    var rangeSelectionError by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isAccessible, currentUri) {
+        selectedStartVideo = null
+        selectedEndVideo = null
+        rangeSelectionError = false
+    }
+
+    // 開始・終了の両方が揃ったらエラー表示は不要になる
+    LaunchedEffect(selectedStartVideo, selectedEndVideo) {
+        if (selectedStartVideo != null && selectedEndVideo != null) {
+            rangeSelectionError = false
+        }
+    }
+
+    val isFabEnabled = isAccessible && !isLoading && videoInfos.isNotEmpty()
+    val scope = rememberCoroutineScope()
+
+    // 通知は Toast ではなく Snackbar で出す。Toast は Android 12 以降、アプリの
+    // アイコンが自動で付いてしまい外観を制御できないため (カスタム表示も不可)
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    var hasStartedLoading by remember { mutableStateOf(false) }
+    var snackbarShownForCurrentLoad by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isLoading, isAccessible, videoInfos.isEmpty()) {
+        if (isLoading) {
+            hasStartedLoading = true
+            snackbarShownForCurrentLoad = false
+        } else if (
+            hasStartedLoading &&
+            !snackbarShownForCurrentLoad &&
+            isAccessible &&
+            videoInfos.isEmpty()
+        ) {
+            scope.launch {
+                snackbarHostState.showSnackbar("動画が見つかりませんでした")
+            }
+
+            snackbarShownForCurrentLoad = true
+        }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        floatingActionButton = {
+            FloatingActionButton(
+                // 【修正2】 無効時は onClick を null にするか、処理をスキップする
+                onClick = {
+                    if (isFabEnabled) {
+                        rangeSelectionError = false // 開くたびに前回のエラー表示は消す
+                        showBottomSheet = true
+                    }
+                },
+                // 【修正3】 有効・無効に合わせて色を切り替える
+                containerColor = if (isFabEnabled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    ButtonDefaults.buttonColors().disabledContainerColor // 無効時の背景色（お好みで変更可）
+                },
+                contentColor = if (isFabEnabled) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    ButtonDefaults.buttonColors().disabledContentColor // 無効時のアイコン色
+                },
+                elevation = if (isFabEnabled) {
+                    FloatingActionButtonDefaults.elevation()
+                } else {
+                    FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 0.dp,
+                        pressedElevation = 0.dp,
+                        focusedElevation = 0.dp,
+                        hoveredElevation = 0.dp
+                    )
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = "Open Range Form"
+                )
+            }
+        }
+
+    ) { innerPadding ->
+        SelectDirectoryScreen(
+            currentUri = currentUri,
+            isLoading = isLoading,
+            onChooseClick = onChooseClick,
+            modifier = Modifier.padding(innerPadding)
+        )
+    }
+
+    if (showBottomSheet) {
+        //CompositionLocalProvider(LocalRippleConfiguration provides null) {
+            ModalBottomSheet(
+                onDismissRequest = { showBottomSheet = false },
+                sheetState = sheetState
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "動画範囲選択",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(bottom = 24.dp)
+                    )
+
+                    // --- 1. 動画開始時間フォーム ---
+                    Box(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                        OutlinedTextField(
+                            value = selectedStartVideo?.startTimeText ?: "",
+                            onValueChange = {},
+                            label = { Text("開始時刻") },
+                            trailingIcon = {
+                                if (!selectedStartVideo?.startTimeText.isNullOrEmpty()) {
+                                    IconButton(
+                                        onClick = {
+                                            selectedStartVideo = null
+                                        },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "クリア"
+                                        )
+                                    }
+                                }
+                            },
+                            readOnly = true,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable(
+                                    onClick = { startMenuExpanded = !startMenuExpanded },
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                )
+                        )
+                        if (!selectedStartVideo?.startTimeText.isNullOrEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(end = 44.dp)
+                                    .size(48.dp)
+                                    .clickable(
+                                        onClick = { selectedStartVideo = null },
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    )
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = startMenuExpanded,
+                            onDismissRequest = { startMenuExpanded = false },
+                            offset = DpOffset(0.dp, (-8).dp),
+                            modifier = Modifier.fillMaxWidth(0.9f).heightIn(max = 250.dp)
+                        ) {
+                            // 💡 インデックスによる制限: 終了動画が選択されている場合、その動画のインデックス以下の候補だけを残す
+                            val endIdx = videoInfos.indexOf(selectedEndVideo)
+                            val filteredStartList = if (endIdx != -1) {
+                                videoInfos.take(endIdx + 1) // 終了動画と同じ、またはそれ以前
+                            } else {
+                                videoInfos
+                            }
+
+                            filteredStartList.forEach { video ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                text = video.startTimeText,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedStartVideo = video
+                                        startMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "～",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(bottom = 8.dp).graphicsLayer(rotationZ = 90f)
+                    )
+
+                    // --- 2. 動画終了時間フォーム ---
+                    Box(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                        OutlinedTextField(
+                            value = selectedEndVideo?.endTimeText ?: "",
+                            onValueChange = {},
+                            label = { Text("終了時刻") },
+                            trailingIcon = {
+                                if (!selectedEndVideo?.endTimeText.isNullOrEmpty()) {
+                                    IconButton(
+                                        onClick = {
+                                            selectedEndVideo = null
+                                        },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "クリア"
+                                        )
+                                    }
+                                }
+                            },
+                            readOnly = true,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .padding(horizontal = 32.dp)
+                                .clickable(
+                                    onClick = { endMenuExpanded = !endMenuExpanded },
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                )
+                        )
+                        if (!selectedEndVideo?.endTimeText.isNullOrEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(end = 44.dp)
+                                    .size(48.dp)
+                                    .clickable(
+                                        onClick = { selectedEndVideo = null },
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    )
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = endMenuExpanded,
+                            onDismissRequest = { endMenuExpanded = false },
+                            offset = DpOffset(0.dp, (-8).dp),
+                            modifier = Modifier.fillMaxWidth(0.9f).heightIn(max = 250.dp)
+                        ) {
+                            // 💡 インデックスによる制限: 開始動画が選択されている場合、その動画のインデックス以上の候補だけを残す
+                            val startIdx = videoInfos.indexOf(selectedStartVideo)
+                            val filteredEndList = if (startIdx != -1) {
+                                videoInfos.drop(startIdx) // 開始動画と同じ、またはそれ以降
+                            } else {
+                                videoInfos
+                            }
+
+                            filteredEndList.forEach { video ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                text = video.endTimeText,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedEndVideo = video
+                                        endMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    // 範囲未選択で「決定」を押した場合は、シート内にエラーを出す
+                    // (Scaffold の Snackbar はモーダルシートの背後に隠れて見えないため)
+                    if (rangeSelectionError) {
+                        Text(
+                            text = "動画範囲を選択してください",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 32.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp)) // 必要に応じて隙間を調整
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
+
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    sheetState.hide()
+                                    showBottomSheet = false
+                                }
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "キャンセル",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp)) // アイコンとテキストの隙間
+                            Text(
+                                text = "キャンセル",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                if (hasStartedProcessing) return@Button
+                                if (selectedStartVideo != null && selectedEndVideo != null) {
+                                    val startIdx = videoInfos.indexOf(selectedStartVideo)
+                                    val endIdx = videoInfos.indexOf(selectedEndVideo)
+                                    val selectedVideoInfos = videoInfos.subList(startIdx, endIdx + 1)
+
+                                    hasStartedProcessing = true
+
+                                    // 処理を開始したら、ローディング画面を挟まずにリスト画面へ遷移する
+                                    // (進捗はリスト画面のトップバー下のバーで表示される)
+                                    keyFrameViewModel.startProcessing(selectedVideoInfos)
+
+                                    scope.launch {
+                                        sheetState.hide()
+                                        showBottomSheet = false
+                                        onProcessingFinished()
+                                    }
+                                } else {
+                                    rangeSelectionError = true
+                                }
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "決定",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp)) // アイコンとテキストの隙間
+                            Text(
+                                text = "決定",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+                    }
+                }
+            }
+        //}
+    }
+}
