@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.domain.model.CropImage
+import com.example.keyframeplayer.ui.component.BboxThumbnail
 import com.example.keyframeplayer.core.domain.model.ImageColor
 import com.example.keyframeplayer.core.domain.model.japaneseClassName
 import kotlinx.coroutines.launch
@@ -205,18 +207,17 @@ fun BottomInfoArea(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    // 画像表示エリア
+                    // 画像表示エリア: リスト画面のサムネイルと同じく、bbox で切り抜いた
+                    // 画像を Fit で表示し、余白は黒で埋める
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(200.dp)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black)
                     ) {
-                        ZoomableImage(
-                            imagePath = currentKeyframe.keyFramePath,
-                            isPixelCoordinates = true,
-                            initialTopLeft = Offset(currentKeyframe.bboxLeft.toFloat(), currentKeyframe.bboxTop.toFloat()),
-                            initialBottomRight = Offset(currentKeyframe.bboxRight.toFloat(), currentKeyframe.bboxBottom.toFloat()),
+                        BboxThumbnail(
+                            detection = currentKeyframe,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
