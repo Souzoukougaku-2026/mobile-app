@@ -141,11 +141,13 @@ fun BottomInfoArea(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    // ◀ 左矢印ボタン (前のデータ)
+                    // ◀ 左矢印ボタン (前のデータ): カードを切り替えたら再生位置も合わせる
                     IconButton(
                         onClick = {
                             if (currentIndex > 0) {
-                                selectedKeyframeId = filteredKeyframes[currentIndex - 1].id
+                                val target = filteredKeyframes[currentIndex - 1]
+                                selectedKeyframeId = target.id
+                                onSeekToKeyframe(target)
                             }
                         },
                         enabled = currentIndex > 0
@@ -183,11 +185,13 @@ fun BottomInfoArea(
                         )
                     }
 
-                    // ▶ 右矢印ボタン (次のデータ)
+                    // ▶ 右矢印ボタン (次のデータ): カードを切り替えたら再生位置も合わせる
                     IconButton(
                         onClick = {
                             if (currentIndex >= 0 && currentIndex < totalCount - 1) {
-                                selectedKeyframeId = filteredKeyframes[currentIndex + 1].id
+                                val target = filteredKeyframes[currentIndex + 1]
+                                selectedKeyframeId = target.id
+                                onSeekToKeyframe(target)
                             }
                         },
                         enabled = currentIndex >= 0 && currentIndex < totalCount - 1
