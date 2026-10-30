@@ -1,0 +1,23 @@
+package com.example.mikke.core.data.database.dao
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import com.example.mikke.core.data.database.entity.KeyFrameEntity
+import java.util.UUID
+
+@Dao
+interface KeyFrameDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertKeyFrames(keyFrames: List<KeyFrameEntity>)
+
+    @Query("SELECT * FROM KeyFrame WHERE id = :id")
+    suspend fun getKeyFrameById(id: UUID): KeyFrameEntity?
+
+    @Query("SELECT * FROM KeyFrame ORDER BY realTime ASC")
+    suspend fun getAllKeyFrames(): List<KeyFrameEntity>
+
+    @Query("DELETE FROM KeyFrame")
+    suspend fun clearKeyFrames()
+}

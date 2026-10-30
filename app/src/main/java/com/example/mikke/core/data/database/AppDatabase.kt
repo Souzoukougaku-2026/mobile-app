@@ -1,0 +1,29 @@
+package com.example.mikke.core.data.database
+
+import androidx.room.Database
+import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
+import com.example.mikke.core.data.database.dao.CropImageDao
+import com.example.mikke.core.data.database.dao.KeyFrameDao
+import com.example.mikke.core.data.database.dao.VideoDao
+import com.example.mikke.core.data.database.entity.CropImageEntity
+import com.example.mikke.core.data.database.entity.KeyFrameEntity
+import com.example.mikke.core.data.database.entity.VideoEntity
+
+@Database(
+    entities = [CropImageEntity::class, KeyFrameEntity::class, VideoEntity::class],
+    version = 5,
+    exportSchema = false
+)
+@TypeConverters(Converters::class)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun cropImageDao(): CropImageDao
+    abstract fun keyFrameDao(): KeyFrameDao
+    abstract fun videoDao(): VideoDao
+
+    suspend fun clearAllData() {
+        cropImageDao().clearCropImages()
+        keyFrameDao().clearKeyFrames()
+        videoDao().clearVideos()
+    }
+}
