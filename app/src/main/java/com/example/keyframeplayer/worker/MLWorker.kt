@@ -47,7 +47,9 @@ class MLWorker(
     private val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
         .setContentTitle("落とし物解析を実行中")
         .setContentText(null)
-        .setSmallIcon(R.drawable.ic_launcher_foreground)
+        // 通知のスモールアイコンはシルエット専用アイコンを使う (ランチャー用の
+        // フルカラー画像はアルファ形状だけが描画されて潰れてしまうため)
+        .setSmallIcon(R.drawable.ic_stat_search)
         .setOngoing(true)
         .setProgress(100, 0, false)
 
