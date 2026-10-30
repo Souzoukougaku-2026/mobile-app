@@ -132,14 +132,6 @@ fun MovieScreen(
         }
     }
 
-    // 現在時刻に最も近いアクティブキーフレームの検索
-    val activeKeyframe = remember(uiState.keyframes, uiState.currentRealTimeMs) {
-        if (uiState.keyframes.isEmpty()) null
-        else {
-            uiState.keyframes.minByOrNull { kotlin.math.abs(it.realTime - uiState.currentRealTimeMs) }
-        }
-    }
-
     // シーク操作ハンドラ: タップ位置をそのまま ViewModel へ渡す。
     // 動画の無いエリアの場合は ViewModel 側で最寄りの動画端に寄せて処理する (通知は出さない)
     val handleProgressTapped: (Float) -> Unit = { overallProgress ->
@@ -197,12 +189,6 @@ fun MovieScreen(
                 ) {
                     // --- 統合グラフ (Unified Graph Area) ---
                     Column(modifier = Modifier.padding(top = 8.dp)) {
-                        Text(
-                            "検出データ集計グラフ",
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        )
-
                         UnifiedGraphArea(
                             uiState = uiState,
                             onProgressTapped = handleProgressTapped,
@@ -218,20 +204,10 @@ fun MovieScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    TimeLabel(
-                        currentTime = uiState.currentTime,
-                        totalDuration = uiState.totalDurationSeconds,
-                        realTimeMs = uiState.currentRealTimeMs,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
                     Spacer(modifier = Modifier.height(8.dp))
 
                     BottomInfoArea(
                         currentTime = uiState.currentTime,
-                        activeKeyframe = activeKeyframe,
                         keyframes = uiState.keyframes,
                         selectedClassFilter = uiState.selectedClassFilter,
                         selectedColorFilter = uiState.selectedColorFilter,

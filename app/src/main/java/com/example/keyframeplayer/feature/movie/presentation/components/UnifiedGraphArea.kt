@@ -711,7 +711,7 @@ fun GraphControlArea(
                     value = uiState.selectedClassFilter?.toJapaneseClassName() ?: "すべて",
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("クラス絞り込み") },
+                    label = { Text("モノの名前") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = classMenuExpanded) },
                     modifier = Modifier
                         .menuAnchor()
@@ -722,7 +722,7 @@ fun GraphControlArea(
                     onDismissRequest = { classMenuExpanded = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("全てのクラス") },
+                        text = { Text("すべてのモノ") },
                         onClick = {
                             onClassFilterSelected(null)
                             classMenuExpanded = false
@@ -751,7 +751,7 @@ fun GraphControlArea(
                     value = selectedColor?.displayName ?: "すべて",
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("色絞り込み") },
+                    label = { Text("色") },
                     leadingIcon = selectedColor?.let { color ->
                         {
                             Icon(
