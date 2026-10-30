@@ -137,7 +137,7 @@ fun ListUpScreen(
         maxOf(1, ceil(filteredAndSortedItems.size / itemsPerPage.toDouble()).toInt())
     }
 
-    val pagedTopics = remember(filteredAndSortedItems, currentPage) {
+    val pagedCropImages = remember(filteredAndSortedItems, currentPage) {
         filteredAndSortedItems.drop(currentPage * itemsPerPage).take(itemsPerPage)
     }
 
@@ -231,8 +231,8 @@ fun ListUpScreen(
                     }
                 }
             } else {
-                TopicGrid(
-                    topics = pagedTopics,
+                CropImageGrid(
+                    cropImages = pagedCropImages,
                     onToggleLiked = onToggleLiked,
                     onNavigateToDetail = onNavigateToDetail,
                     modifier = Modifier.padding(
@@ -605,8 +605,8 @@ fun MyTopBar(
  * グリッド表示コンポーネント
  */
 @Composable
-fun TopicGrid(
-    topics: List<CropImage>,
+fun CropImageGrid(
+    cropImages: List<CropImage>,
     onToggleLiked: (UUID, Boolean) -> Unit,
     onNavigateToDetail: (CropImage) -> Unit,
     modifier: Modifier = Modifier
@@ -618,12 +618,12 @@ fun TopicGrid(
         modifier = modifier
     ) {
         items(
-            items = topics,
+            items = cropImages,
             key = { it.id }
-        ) { topic ->
-            TopicCard(
-                topic = topic,
-                onClick = { onNavigateToDetail(topic) },
+        ) { cropImage ->
+            CropImageCard(
+                cropImage = cropImage,
+                onClick = { onNavigateToDetail(cropImage) },
                 onToggleLiked = onToggleLiked
             )
         }
@@ -634,17 +634,17 @@ fun TopicGrid(
  * 各カード要素コンポーネント
  */
 @Composable
-fun TopicCard(
-    topic: CropImage,
+fun CropImageCard(
+    cropImage: CropImage,
     onClick: () -> Unit,
     onToggleLiked: (UUID, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val formattedDate = remember(topic.realTime, topic.fileTime) {
-        if (topic.realTime > 0L) {
-            SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(topic.realTime))
+    val formattedDate = remember(cropImage.realTime, cropImage.fileTime) {
+        if (cropImage.realTime > 0L) {
+            SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(cropImage.realTime))
         } else {
-            "${topic.fileTime}s"
+            "${cropImage.fileTime}s"
         }
     }
 
@@ -661,12 +661,12 @@ fun TopicCard(
                     .background(Color.Black)
             ) {
                 BboxThumbnail(
-                    topic = topic,
+                    cropImage = cropImage,
                     modifier = Modifier.fillMaxSize()
                 )
 
                 IconButton(
-                    onClick = { onToggleLiked(topic.id, !topic.isLiked) },
+                    onClick = { onToggleLiked(cropImage.id, !cropImage.isLiked) },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(8.dp)
@@ -674,9 +674,9 @@ fun TopicCard(
                         .size(32.dp)
                 ) {
                     Icon(
-                        painter = painterResource(if (topic.isLiked) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
+                        painter = painterResource(if (cropImage.isLiked) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
                         contentDescription = "Favorite",
-                        tint = if (topic.isLiked) Color(0xFFFF9800) else Color.White,
+                        tint = if (cropImage.isLiked) Color(0xFFFF9800) else Color.White,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -689,7 +689,7 @@ fun TopicCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = topic.japaneseClassName,
+                        text = cropImage.japaneseClassName,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -698,14 +698,14 @@ fun TopicCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         painter = painterResource(R.drawable.ic_footprint_filled),
-                        contentDescription = topic.color.displayName,
-                        tint = topic.color.composeColor,
+                        contentDescription = cropImage.color.displayName,
+                        tint = cropImage.color.composeColor,
                         modifier = Modifier
                             .size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = topic.color.displayName,
+                        text = cropImage.color.displayName,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
