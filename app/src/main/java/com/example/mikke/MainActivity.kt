@@ -1,7 +1,10 @@
 package com.example.mikke
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -87,8 +90,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // 通知の実行時許可を要求するランチャー
+    // (結果への対応は不要: 許可されなくても解析自体は動作し、進捗通知が表示されないだけ)
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Android 13 以降は通知に実行時許可が必要なため、起動直後に要求する
+        // (マニフェストへの POST_NOTIFICATIONS の宣言は済み)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         // DB 保持のためアプリ起動時の自動クリアは無効化 (必要に応じてコメント解除)
         // clearAppData()
