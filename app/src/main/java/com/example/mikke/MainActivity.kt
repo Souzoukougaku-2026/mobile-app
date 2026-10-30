@@ -34,7 +34,7 @@ import com.example.mikke.feature.movie.presentation.MovieRoute
 import com.example.mikke.feature.movie.presentation.MovieViewModel
 import com.example.mikke.ui.screen.DirectoryManagementScreen
 import com.example.mikke.ui.screen.ListUpScreen
-import com.example.mikke.ui.theme.KeyFramePlayerTheme
+import com.example.mikke.ui.theme.MikkeTheme
 import com.example.mikke.ui.viewmodel.ImageRecognitionViewModel
 import com.example.mikke.ui.viewmodel.VideoManagementViewModel
 import com.example.mikke.util.VideoUtils
@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
         // clearAppData()
 
         setContent {
-            KeyFramePlayerTheme(dynamicColor = false) {
+            MikkeTheme(dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     AppNavigation(
                         videoViewModel = viewModel,

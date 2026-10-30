@@ -93,7 +93,7 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun KeyFramePlayerTheme(
+fun MikkeTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     // アプリのブランドカラー (青) を優先するため、デフォルトでは Dynamic color を使わない。
     // 壁紙連動に戻したい場合は呼び出し側で true を渡す。
