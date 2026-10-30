@@ -2,6 +2,7 @@ package com.example.keyframeplayer.feature.movie.presentation.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.scrollBy
@@ -31,6 +32,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.keyframeplayer.R
 import com.example.keyframeplayer.core.data.database.entity.VideoEntity
@@ -673,9 +675,55 @@ fun UnifiedTimeTicks(
 
 
 /**
- * クラス/色フィルター操作用コントロールUI
+ * 絞り込み用のチップ型ボタン (高さ 36dp・1行テキスト)。タップでドロップダウンを開く想定
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FilterChipButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    leadingIcon: @Composable (() -> Unit)? = null
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(36.dp),
+        shape = RoundedCornerShape(percent = 50),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (leadingIcon != null) {
+                leadingIcon()
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/**
+ * モノの名前/色フィルター操作用コントロールUI。
+ * 順序は従来どおりグラフの下に置き、OutlinedTextField をやめて
+ * 1行のチップ型ボタンにすることでツール群全体を細くしている
+ */
 @Composable
 fun GraphControlArea(
     uiState: MovieUiState,
@@ -688,159 +736,131 @@ fun GraphControlArea(
     var classMenuExpanded by remember { mutableStateOf(false) }
     var colorMenuExpanded by remember { mutableStateOf(false) }
 
-    Column(
+    // フィルター (モノの名前 & 色 & いいね) を1行のチップ列で並べる
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // フィルター（クラス & 色 & いいね）
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // クラスフィルター
-            ExposedDropdownMenuBox(
+        // モノの名前フィルター
+        Box(modifier = Modifier.weight(1f)) {
+            FilterChipButton(
+                label = "モノの名前: ${uiState.selectedClassFilter?.toJapaneseClassName() ?: "すべて"}",
+                onClick = { classMenuExpanded = true },
+                modifier = Modifier.fillMaxWidth()
+            )
+            DropdownMenu(
                 expanded = classMenuExpanded,
-                onExpandedChange = { classMenuExpanded = !classMenuExpanded },
-                modifier = Modifier.weight(1f)
+                onDismissRequest = { classMenuExpanded = false }
             ) {
-                OutlinedTextField(
-                    value = uiState.selectedClassFilter?.toJapaneseClassName() ?: "すべて",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("クラス絞り込み") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = classMenuExpanded) },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth()
+                DropdownMenuItem(
+                    text = { Text("すべてのモノ") },
+                    onClick = {
+                        onClassFilterSelected(null)
+                        classMenuExpanded = false
+                    }
                 )
-                ExposedDropdownMenu(
-                    expanded = classMenuExpanded,
-                    onDismissRequest = { classMenuExpanded = false }
-                ) {
+                uiState.availableClasses.forEach { className ->
                     DropdownMenuItem(
-                        text = { Text("全てのクラス") },
+                        text = { Text(className.toJapaneseClassName()) },
                         onClick = {
-                            onClassFilterSelected(null)
+                            onClassFilterSelected(className)
                             classMenuExpanded = false
                         }
                     )
-                    uiState.availableClasses.forEach { className ->
-                        DropdownMenuItem(
-                            text = { Text(className.toJapaneseClassName()) },
-                            onClick = {
-                                onClassFilterSelected(className)
-                                classMenuExpanded = false
-                            }
-                        )
-                    }
                 }
             }
+        }
 
-            // 色フィルター
-            ExposedDropdownMenuBox(
+        // 色フィルター
+        Box(modifier = Modifier.weight(1f)) {
+            val selectedColor = uiState.selectedColorFilter
+            FilterChipButton(
+                label = "色: ${selectedColor?.displayName ?: "すべて"}",
+                leadingIcon = selectedColor?.let { color ->
+                    {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_footprint),
+                            contentDescription = color.displayName,
+                            tint = color.composeColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                },
+                onClick = { colorMenuExpanded = true },
+                modifier = Modifier.fillMaxWidth()
+            )
+            DropdownMenu(
                 expanded = colorMenuExpanded,
-                onExpandedChange = { colorMenuExpanded = !colorMenuExpanded },
-                modifier = Modifier.weight(1f)
+                onDismissRequest = { colorMenuExpanded = false }
             ) {
-                val selectedColor = uiState.selectedColorFilter
-                OutlinedTextField(
-                    value = selectedColor?.displayName ?: "すべて",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("色絞り込み") },
-                    leadingIcon = selectedColor?.let { color ->
-                        {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_footprint),
-                                contentDescription = color.displayName,
-                                tint = color.composeColor,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = colorMenuExpanded) },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth()
+                DropdownMenuItem(
+                    text = { Text("すべての色") },
+                    onClick = {
+                        onColorFilterSelected(null)
+                        colorMenuExpanded = false
+                    }
                 )
-                ExposedDropdownMenu(
-                    expanded = colorMenuExpanded,
-                    onDismissRequest = { colorMenuExpanded = false }
-                ) {
+                uiState.availableColors.forEach { color ->
                     DropdownMenuItem(
-                        text = { Text("すべての色") },
+                        text = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_footprint),
+                                    contentDescription = color.displayName,
+                                    tint = color.composeColor,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(color.displayName)
+                            }
+                        },
                         onClick = {
-                            onColorFilterSelected(null)
+                            onColorFilterSelected(color)
                             colorMenuExpanded = false
                         }
                     )
-                    uiState.availableColors.forEach { color ->
-                        DropdownMenuItem(
-                            text = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_footprint),
-                                        contentDescription = color.displayName,
-                                        tint = color.composeColor,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Text(color.displayName)
-                                }
-                            },
-                            onClick = {
-                                onColorFilterSelected(color)
-                                colorMenuExpanded = false
-                            }
-                        )
-                    }
                 }
             }
+        }
 
-            // 🐾 足跡（お気に入り）トグルフィルターボタン (隣の OutlinedTextField と高さ・枠線を統一)
-            val isLikedSelected = uiState.isLikedFilterOnly
-            val borderColor = if (isLikedSelected) Color(0xFFFF9800) else MaterialTheme.colorScheme.outline
-            val containerColor = if (isLikedSelected) Color(0xFFFF9800).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
+        // 足跡 (お気に入り) トグルフィルターも同じ高さのチップに揃える
+        val isLikedSelected = uiState.isLikedFilterOnly
+        val likedBorderColor = if (isLikedSelected) Color(0xFFFF9800) else MaterialTheme.colorScheme.outline
+        val likedContainerColor = if (isLikedSelected) Color(0xFFFF9800).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
 
-            Surface(
-                onClick = onLikedFilterToggled,
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(64.dp),
-                shape = MaterialTheme.shapes.extraSmall,
-                color = containerColor,
-                border = BorderStroke(
-                    width = if (isLikedSelected) 2.dp else 1.dp,
-                    color = borderColor
-                )
+        Surface(
+            onClick = onLikedFilterToggled,
+            modifier = Modifier.height(36.dp),
+            shape = RoundedCornerShape(percent = 50),
+            color = likedContainerColor,
+            border = BorderStroke(
+                width = if (isLikedSelected) 2.dp else 1.dp,
+                color = likedBorderColor
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(vertical = 4.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(if (isLikedSelected) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
-                        contentDescription = "Favorite Filter",
-                        tint = if (isLikedSelected) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "のみ",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (isLikedSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isLikedSelected) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Icon(
+                    painter = painterResource(if (isLikedSelected) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
+                    contentDescription = "お気に入りのみ",
+                    tint = if (isLikedSelected) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "のみ",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (isLikedSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isLikedSelected) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

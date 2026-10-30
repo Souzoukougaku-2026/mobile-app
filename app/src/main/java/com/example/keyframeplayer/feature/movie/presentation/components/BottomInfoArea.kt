@@ -16,7 +16,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Flip
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -49,7 +48,6 @@ import kotlin.math.abs
 @Composable
 fun BottomInfoArea(
     currentTime: Float,
-    activeKeyframe: CropImage? = null,
     keyframes: List<CropImage> = emptyList(),
     selectedClassFilter: String? = null,
     selectedColorFilter: ImageColor? = null,
@@ -73,12 +71,21 @@ fun BottomInfoArea(
     }
 
     // 手動選択中のキーフレーム ID
-    var selectedKeyframeId by remember { mutableStateOf<UUID?>(activeKeyframe?.id) }
+    var selectedKeyframeId by remember { mutableStateOf<UUID?>(null) }
 
-    // 外部（アクティブキーフレームなど）からの選択変更の同期
-    LaunchedEffect(activeKeyframe?.id) {
-        if (activeKeyframe != null) {
-            selectedKeyframeId = activeKeyframe.id
+    // 再生位置に追従させるキーフレーム: 絞り込み後のうち、再生位置以前で最も新しいもの。
+    // 未来の検出はまだ再生位置に来ていないので出さない (グラフ側の前/次判定と同じ考え方)。
+    // 再生位置より前に1件も無い場合は、先頭のものを出す
+    val playbackKeyframe = remember(filteredKeyframes, realTimeMs) {
+        filteredKeyframes.filter { it.realTime <= realTimeMs }.maxByOrNull { it.realTime }
+            ?: filteredKeyframes.firstOrNull()
+    }
+
+    // 再生位置が別のキーフレームに移ったら、表示も合わせる。
+    // 停止中に矢印ボタンで手動選択した場合は realTimeMs が変わらないため、上書きされない
+    LaunchedEffect(playbackKeyframe?.id) {
+        if (playbackKeyframe != null) {
+            selectedKeyframeId = playbackKeyframe.id
         }
     }
 
@@ -122,7 +129,7 @@ fun BottomInfoArea(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "検出オブジェクト (${currentIndex + 1} / $totalCount)",
+                    text = "探し物 (${currentIndex + 1} / $totalCount)",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -133,11 +140,13 @@ fun BottomInfoArea(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    // ◀ 左矢印ボタン (前のデータ)
+                    // ◀ 左矢印ボタン (前のデータ): カードを切り替えたら再生位置も合わせる
                     IconButton(
                         onClick = {
                             if (currentIndex > 0) {
-                                selectedKeyframeId = filteredKeyframes[currentIndex - 1].id
+                                val target = filteredKeyframes[currentIndex - 1]
+                                selectedKeyframeId = target.id
+                                onSeekToKeyframe(target)
                             }
                         },
                         enabled = currentIndex > 0
@@ -162,24 +171,13 @@ fun BottomInfoArea(
                         )
                     }
 
-                    // ▶️ 試聴 (再生位置移動) ボタン
-                    IconButton(
-                        onClick = {
-                            onSeekToKeyframe(currentKeyframe)
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "動画の該当位置へ移動",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    // ▶ 右矢印ボタン (次のデータ)
+                    // ▶ 右矢印ボタン (次のデータ): カードを切り替えたら再生位置も合わせる
                     IconButton(
                         onClick = {
                             if (currentIndex >= 0 && currentIndex < totalCount - 1) {
-                                selectedKeyframeId = filteredKeyframes[currentIndex + 1].id
+                                val target = filteredKeyframes[currentIndex + 1]
+                                selectedKeyframeId = target.id
+                                onSeekToKeyframe(target)
                             }
                         },
                         enabled = currentIndex >= 0 && currentIndex < totalCount - 1
@@ -221,51 +219,24 @@ fun BottomInfoArea(
                             initialBottomRight = Offset(currentKeyframe.bboxRight.toFloat(), currentKeyframe.bboxBottom.toFloat()),
                             modifier = Modifier.fillMaxSize()
                         )
-
-                        // 左上: クラス名・スコアのバッジ
-                        Surface(
-                            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = currentKeyframe.japaneseClassName,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.inverseOnSurface,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Score: %.2f".format(currentKeyframe.score),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // 詳細情報テーブル
                     val timeStr = if (currentKeyframe.realTime > 0L) {
-                        SimpleDateFormat("yyyy/MM/dd,HH:mm:ss", Locale.getDefault()).format(Date(currentKeyframe.realTime))
+                        SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(currentKeyframe.realTime))
                     } else if (realTimeMs > 0L) {
-                        SimpleDateFormat("yyyy/MM/dd,HH:mm:ss", Locale.getDefault()).format(Date(realTimeMs))
+                        SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date(realTimeMs))
                     } else {
                         "%02d:%02d".format((currentTime / 3600).toInt(), ((currentTime % 3600) / 60).toInt())
                     }
 
                     val tableData = listOf(
-                        "Timestamp" to timeStr,
-                        "Class Name" to currentKeyframe.japaneseClassName,
+                        "日時" to timeStr,
+                        "名前" to currentKeyframe.japaneseClassName,
 //                        "Confidence Score" to "%.2f".format(currentKeyframe.score),
-                        "Color Tag" to currentKeyframe.color.displayName,
+                        "色" to currentKeyframe.color.displayName,
 //                        "BBox Coordinates" to "[${currentKeyframe.bboxLeft}, ${currentKeyframe.bboxTop}, ${currentKeyframe.bboxRight}, ${currentKeyframe.bboxBottom}]",
 //                        "Favorite State" to if (currentKeyframe.isLiked) "❤️ Liked" else "🤍 Normal"
                     )
@@ -298,7 +269,7 @@ fun BottomInfoArea(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "現在のフィルター条件に合致する検出オブジェクトはありません。",
+                        text = "現在のフィルター条件に合致する探し物はありません。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
