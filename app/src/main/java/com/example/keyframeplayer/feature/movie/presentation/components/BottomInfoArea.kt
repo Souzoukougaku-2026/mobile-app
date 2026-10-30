@@ -16,7 +16,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Flip
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -169,19 +168,6 @@ fun BottomInfoArea(
                             painter = painterResource(if (currentKeyframe.isLiked) R.drawable.ic_footprint_filled else R.drawable.ic_footprint),
                             contentDescription = "お気に入り切替",
                             tint = if (currentKeyframe.isLiked) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // ▶️ 試聴 (再生位置移動) ボタン
-                    IconButton(
-                        onClick = {
-                            onSeekToKeyframe(currentKeyframe)
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "動画の該当位置へ移動",
-                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
 
